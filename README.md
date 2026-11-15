@@ -64,8 +64,11 @@ principal.
 
 - **Bandeja**: clic izquierdo abre el panel; clic derecho, activar delay, volver a vivo o salir. **Salir** cierra todo.
 - **Atajos**: `Ctrl+Shift+F9` activa el delay y `Ctrl+Shift+F10` vuelve a vivo (se cambian en `config.json`).
-- **StreamDock (Mirabox)**: abrí `instalar-streamdock.bat` una vez, reabrí StreamDock y arrastrá **Stream delay →
-  Delay on/off** a un botón.
+- **Stream Deck o StreamDock**: en Configuración → **Botonera**, tocá **Instalar el botón**. Se instala en las que
+  encuentre y reinicia su programa. Después arrastrá **Stream Kit → Delay on/off** a una tecla: muestra el estado del
+  delay y al tocarla lo activa o lo saca.
+- **Adentro de OBS**: en Configuración → OBS, **Agregar el panel a OBS** y **Agregar el chat a OBS** los suman como paneles
+  (Ver → Paneles). Igual que Autoconfigurar OBS, si está abierto avisa, lo cierra y lo vuelve a abrir.
 - **Desde el celular**: con `"panel_lan": true` en `config.json`, el inicio muestra un link con clave para abrir el
   panel desde el celular en el mismo Wi-Fi. La configuración de claves y cuentas solo se abre desde la PC.
 
@@ -89,7 +92,7 @@ pythonw app.py
 ```
 
 Pruebas, sin internet y sin tocar tu config: `python test_chatbot.py`, `test_cuentas.py`, `test_panel.py`,
-`test_canal.py`, `test_metricas.py`, `test_obs.py` y `test_delay.py` (este último simula OBS durante unos minutos).
+`test_canal.py`, `test_metricas.py`, `test_obs.py`, `test_deck.py` y `test_delay.py` (este último simula OBS durante unos minutos).
 
 Para armar el .exe en tu PC: `python -m pip install pyinstaller` y `python build.py`. Deja el zip en `dist/`, listo
 para subir como release con `gh release create`.

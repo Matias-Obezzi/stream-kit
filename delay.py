@@ -28,6 +28,7 @@ from urllib.parse import unquote
 
 import canal
 import cuentas
+import deck
 import metricas
 import obs
 import panel_bot
@@ -817,10 +818,15 @@ def panel(bridge, cfg_path):
                 return self.page('config.html')
             if path == '/api/config':
                 return self.reply(200, json.dumps(cuentas.leer()).encode())
+            if path == '/api/botonera':
+                return self.reply(200, json.dumps(deck.apps()).encode())
             if path == '/api/obs':
                 if not self.local():
                     return self.reply(403)
-                return self.reply(200, json.dumps({**obs.estado(cfg['listen_port']), 'a_la_app': bridge.obs_connected}).encode())
+                urls = [d.get('url') for d in obs.docks()]
+                return self.reply(200, json.dumps({**obs.estado(cfg['listen_port']), 'a_la_app': bridge.obs_connected,
+                                                   'dock_panel': f'http://127.0.0.1:{port}/' in urls,
+                                                   'dock_chat': f'http://127.0.0.1:{port}/chat' in urls}).encode())
             if path == '/api/canal':
                 return self.reply(200, json.dumps(canal.leer()).encode())
             if path == '/api/canal/buscar':
@@ -908,6 +914,18 @@ def panel(bridge, cfg_path):
             if path == '/api/bot/reiniciar':
                 panel_bot.reiniciar()
                 return self.reply(200, b'{}')
+            if path in ('/api/botonera/instalar', '/api/obs/dock'):
+                if not self.local():
+                    return self.reply(403)
+                try:
+                    if path == '/api/botonera/instalar':
+                        return self.reply(200, json.dumps(install_streamdock(bridge.cfg, cfg_path)).encode())
+                    dock = {'panel': ('Stream Kit', f'http://127.0.0.1:{port}/'), 'chat': ('Chat', f'http://127.0.0.1:{port}/chat')}.get(s.get('cual'))
+                    if not dock:
+                        return self.error('Pedido inválido.')
+                    return self.reply(200, json.dumps(obs.agregar_dock(*dock, cerrar_obs=bool(s.get('cerrar')))).encode())
+                except (OSError, ValueError) as e:
+                    return self.error(str(e))
             if path == '/api/obs/configurar':
                 if not self.local():
                     return self.reply(403)
@@ -1008,15 +1026,12 @@ def panel(bridge, cfg_path):
 
 
 def install_streamdock(cfg, cfg_path):
-    """Copia el plugin del botón a StreamDock con una clave propia, así ninguna página web puede tocar el delay."""
+    """El botón de delay en Stream Deck o StreamDock, con una clave propia: así ninguna página web puede tocar el delay."""
     cfg['deck_token'] = cfg.get('deck_token') or secrets.token_urlsafe(16)
     save_config(cfg, cfg_path)
-    name = 'com.streamdelay.toggle.sdPlugin'
-    dst = os.path.join(os.environ['APPDATA'], 'HotSpot', 'StreamDock', 'plugins', name)
-    shutil.copytree(os.path.join(HERE, 'streamdock', name), dst, dirs_exist_ok=True)
-    with open(os.path.join(dst, 'config.js'), 'w', encoding='utf-8') as f:
-        f.write(f"const BRIDGE = 'http://127.0.0.1:{cfg.get('panel_port', 8080)}', TOKEN = '{cfg['deck_token']}';\n")
-    print('Plugin instalado. Cerrá y abrí StreamDock, y arrastrá "Delay on/off" (categoría Stream delay) a un botón.')
+    hechas = deck.instalar(os.path.join(HERE, 'streamdock'), f"http://127.0.0.1:{cfg.get('panel_port', 8080)}", cfg['deck_token'])
+    print('Botón instalado en: ' + (', '.join(h['nombre'] for h in hechas) or 'ninguna botonera (no encontré Stream Deck ni StreamDock)'))
+    return hechas
 
 
 def load_config(cfg_path):

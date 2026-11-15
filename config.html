@@ -36,8 +36,22 @@
       <code>rtmp://127.0.0.1:1935/live</code>, clave <code>stream</code>), sin transmisión mejorada, y con la opción de la pista
       de VOD de Twitch para que el VOD salga sin música. Si OBS ya transmitía a una plataforma, su clave pasa a Stream Kit.
       Antes de cambiar nada, guarda una copia de la configuración de OBS.</p>
-    <div class="row"><button id="obs-boton">Autoconfigurar OBS</button></div>
+    <div class="row"><button id="obs-boton">Autoconfigurar OBS</button>
+      <button class="ghost" id="dock-panel">Agregar el panel a OBS</button>
+      <button class="ghost" id="dock-chat">Agregar el chat a OBS</button></div>
+    <p class="hint">Los paneles quedan adentro de OBS, en Ver → Paneles: el de Stream Kit es esta web entera; el del chat,
+      los dos chats juntos con moderación.</p>
     <p class="msg" id="obs-msg" role="status"></p>
+  </section>
+
+  <section class="card" id="botonera-card">
+    <div class="titulo-fila"><h2>Botonera</h2><span class="dot" id="botonera-estado">Revisando…</span></div>
+    <p class="hint" style="margin:0 0 12px">Un botón para tu Stream Deck (Elgato) o StreamDock (Mirabox) que activa o saca el
+      delay y muestra en la tecla cómo está: rojo sin delay, verde con los segundos de delay.</p>
+    <div class="row"><button id="botonera-boton">Instalar el botón</button></div>
+    <p class="hint">Se instala en las que encuentre en esta PC y se reinicia su programa para que lo cargue. Después, en la
+      botonera, buscá la categoría <b>Stream Kit</b> y arrastrá <b>Delay on/off</b> a una tecla.</p>
+    <p class="msg" id="botonera-msg" role="status"></p>
   </section>
 
   <div class="tabs" role="tablist" aria-label="Plataforma">
@@ -355,17 +369,39 @@ async function revisarObs() {
   }
   $('obs-boton').textContent = e.configurado ? 'Volver a configurar OBS' : 'Autoconfigurar OBS';
   $('obs-boton').disabled = !e.instalado;
+  $('dock-panel').disabled = $('dock-chat').disabled = !e.instalado;
+  $('dock-panel').textContent = e.dock_panel ? 'El panel ya está en OBS' : 'Agregar el panel a OBS';
+  $('dock-chat').textContent = e.dock_chat ? 'El chat ya está en OBS' : 'Agregar el chat a OBS';
+  $('dock-panel').disabled ||= e.dock_panel;
+  $('dock-chat').disabled ||= e.dock_chat;
 }
+// cambiar la config de OBS pide cerrarlo: avisa, y avisa dos veces si está transmitiendo. true si se puede seguir
+function permisoParaCerrar(e) {
+  if (!e.abierto) return true;
+  const aviso = e.transmitiendo
+    ? 'OBS está TRANSMITIENDO. Para cambiar su configuración hay que cerrarlo, y eso corta el stream en todas las plataformas.\n\n¿Lo cierro igual, lo cambio y lo vuelvo a abrir?'
+    : 'OBS está abierto. Para cambiar su configuración hay que cerrarlo: lo cierro, lo cambio y lo vuelvo a abrir.\n\n¿Sigo?';
+  return confirm(aviso) && (!e.transmitiendo || confirm('Última confirmación: se va a cortar el stream. ¿Cierro OBS?'));
+}
+async function agregarDock(cual) {
+  await revisarObs();
+  if (!permisoParaCerrar(obsEstado)) return;
+  $('obs-msg').className = 'msg';
+  $('obs-msg').textContent = obsEstado.abierto ? 'Cerrando OBS… Si te pregunta si querés salir, decile que sí.' : 'Agregando…';
+  const r = await post('/api/obs/dock', { cual, cerrar: obsEstado.abierto });
+  const d = await r.json();
+  $('obs-msg').className = 'msg' + (r.ok ? '' : ' error');
+  $('obs-msg').textContent = !r.ok ? d.error : d.ya_estaba ? 'Ese panel ya estaba en OBS: buscalo en Ver → Paneles.'
+    : `Listo: el panel quedó agregado. ${d.reabierto ? 'Volví a abrir OBS.' : 'Abrí OBS.'} Si no lo ves, está en Ver → Paneles.`;
+  revisarObs();
+}
+$('dock-panel').onclick = () => agregarDock('panel');
+$('dock-chat').onclick = () => agregarDock('chat');
+
 $('obs-boton').onclick = async () => {
   await revisarObs();
   const e = obsEstado;
-  if (e.abierto) {
-    const aviso = e.transmitiendo
-      ? 'OBS está TRANSMITIENDO. Para configurarlo hay que cerrarlo, y eso corta el stream en todas las plataformas.\n\n¿Lo cierro igual, lo configuro y lo vuelvo a abrir?'
-      : 'OBS está abierto. Para configurarlo hay que cerrarlo: lo cierro, lo configuro y lo vuelvo a abrir.\n\n¿Sigo?';
-    if (!confirm(aviso)) return;
-    if (e.transmitiendo && !confirm('Última confirmación: se va a cortar el stream. ¿Cierro OBS?')) return;
-  }
+  if (!permisoParaCerrar(e)) return;
   $('obs-boton').disabled = true;
   $('obs-msg').className = 'msg';
   $('obs-msg').textContent = e.abierto ? 'Cerrando OBS… Si te pregunta si querés salir, decile que sí.' : 'Configurando…';
@@ -385,8 +421,34 @@ $('obs-boton').onclick = async () => {
   revisarObs();
 };
 
+// --- botonera ---
+async function revisarBotonera() {
+  let lista;
+  try { lista = await (await fetch('/api/botonera')).json(); } catch { return; }
+  const punto = $('botonera-estado');
+  punto.className = 'dot ' + (!lista.length ? 'err' : lista.every(a => a.instalado) ? 'on' : 'medio');
+  punto.textContent = !lista.length ? 'No encontré Stream Deck ni StreamDock'
+    : lista.map(a => `${a.nombre}: ${a.instalado ? 'con el botón' : 'sin el botón'}`).join(' · ');
+  $('botonera-boton').disabled = !lista.length;
+  $('botonera-boton').textContent = lista.length && lista.every(a => a.instalado) ? 'Volver a instalar el botón' : 'Instalar el botón';
+}
+$('botonera-boton').onclick = async () => {
+  $('botonera-boton').disabled = true;
+  $('botonera-msg').className = 'msg';
+  $('botonera-msg').textContent = 'Instalando…';
+  const r = await post('/api/botonera/instalar', {});
+  const d = await r.json();
+  $('botonera-boton').disabled = false;
+  $('botonera-msg').className = 'msg' + (r.ok ? '' : ' error');
+  $('botonera-msg').textContent = !r.ok ? d.error : !d.length ? 'No encontré Stream Deck ni StreamDock en esta PC.'
+    : 'Listo: ' + d.map(a => `${a.nombre} ${a.reiniciada ? '(lo reinicié)' : '(abrilo para que lo cargue)'}`).join(', ')
+      + '. Buscá la categoría Stream Kit y arrastrá Delay on/off a una tecla.';
+  revisarBotonera();
+};
+
 leer(true);
 revisarObs();
+revisarBotonera();
 setInterval(revisarObs, 10000);
 estadoDelay();
 setInterval(estadoDelay, 3000);

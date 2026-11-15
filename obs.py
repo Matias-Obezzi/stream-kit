@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import time
+import uuid
 
 CARPETA = os.path.join(os.environ.get('APPDATA', ''), 'obs-studio')
 CLAVE = 'stream'
@@ -132,8 +133,9 @@ def cerrar(pid, espera=40):
     return False
 
 
-def configurar(puerto, cerrar_obs=False, abierto=None, cerrar_fn=None, abrir_fn=None):
-    """Devuelve qué hizo. ValueError con el motivo si no se pudo (OBS abierto sin permiso, no se cerró, no está)."""
+def con_obs_cerrado(cambiar, cerrar_obs=False, abierto=None, cerrar_fn=None, abrir_fn=None):
+    """Cierra OBS si hace falta (y si hay permiso), copia su config, aplica cambiar(carpeta del perfil) y lo reabre.
+    Devuelve lo que devuelve cambiar, más reabierto y respaldo. ValueError con el motivo si no se pudo."""
     abierto = proceso_obs() if abierto is None else abierto
     carpeta = perfil()
     if not carpeta or not os.path.isdir(carpeta):
@@ -152,14 +154,44 @@ def configurar(puerto, cerrar_obs=False, abierto=None, cerrar_fn=None, abrir_fn=
                    os.path.join(CARPETA, 'global.ini'), os.path.join(CARPETA, 'user.ini')):
         if os.path.exists(origen):
             shutil.copy2(origen, respaldo)
-    anterior = clave_anterior(leer_servicio(carpeta), puerto)
-    with open(os.path.join(carpeta, 'service.json'), 'w', encoding='utf-8') as f:
-        json.dump({'type': 'rtmp_custom', 'settings': {'server': servidor(puerto), 'key': CLAVE, 'use_auth': False, 'bwtest': False}}, f, indent=4)
-    poner_ini(os.path.join(carpeta, 'basic.ini'), 'Stream1', 'EnableMultitrackVideo', 'false')  # la app espera un solo video H.264
-    for archivo in ('global.ini', 'user.ini'):  # con servidor propio, OBS esconde la pista de VOD si no está esto
-        poner_ini(os.path.join(CARPETA, archivo), 'General', 'EnableCustomServerVodTrack', 'true')
+    r = cambiar(carpeta)
     reabierto = False
     if abierto and abierto[1]:
         (abrir_fn or (lambda exe: subprocess.Popen([exe], cwd=os.path.dirname(exe), creationflags=0x00000008 | 0x00000200, close_fds=True)))(abierto[1])
         reabierto = True
-    return {'reabierto': reabierto, 'anterior': anterior, 'respaldo': respaldo, 'perfil': os.path.basename(carpeta)}
+    return {**r, 'reabierto': reabierto, 'respaldo': respaldo, 'perfil': os.path.basename(carpeta)}
+
+
+def configurar(puerto, **opciones):
+    """Servidor de Stream Kit, sin transmisión mejorada y con la pista de VOD disponible. Devuelve la clave que tenía antes."""
+    def cambiar(carpeta):
+        anterior = clave_anterior(leer_servicio(carpeta), puerto)
+        with open(os.path.join(carpeta, 'service.json'), 'w', encoding='utf-8') as f:
+            json.dump({'type': 'rtmp_custom', 'settings': {'server': servidor(puerto), 'key': CLAVE, 'use_auth': False, 'bwtest': False}}, f, indent=4)
+        poner_ini(os.path.join(carpeta, 'basic.ini'), 'Stream1', 'EnableMultitrackVideo', 'false')  # la app espera un solo video H.264
+        for archivo in ('global.ini', 'user.ini'):  # con servidor propio, OBS esconde la pista de VOD si no está esto
+            poner_ini(os.path.join(CARPETA, archivo), 'General', 'EnableCustomServerVodTrack', 'true')
+        return {'anterior': anterior}
+    return con_obs_cerrado(cambiar, **opciones)
+
+
+def docks():
+    """Los paneles de navegador que el usuario agregó a OBS (Ver → Paneles → Paneles de navegador personalizados)."""
+    texto = valor_ini(leer_ini(os.path.join(CARPETA, 'user.ini')), 'BasicWindow', 'ExtraBrowserDocks')
+    try:
+        lista = json.loads(texto) if texto else []
+        return lista if isinstance(lista, list) else []
+    except ValueError:
+        return []
+
+
+def agregar_dock(titulo, url, **opciones):
+    """Suma una página como panel de OBS. Si ya hay uno con esa dirección, no lo repite."""
+    if any(d.get('url') == url for d in docks()):
+        return {'ya_estaba': True, 'reabierto': False}
+
+    def cambiar(_):
+        lista = docks() + [{'title': titulo, 'url': url, 'uuid': uuid.uuid4().hex}]
+        poner_ini(os.path.join(CARPETA, 'user.ini'), 'BasicWindow', 'ExtraBrowserDocks', json.dumps(lista, ensure_ascii=False))
+        return {'ya_estaba': False}
+    return con_obs_cerrado(cambiar, **opciones)

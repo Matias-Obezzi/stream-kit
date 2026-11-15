@@ -10,22 +10,29 @@
           "FontSize": "12"
         }
       ],
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "UserTitleEnabled": false,
       "SupportedInMultiActions": false,
       "Name": "Delay on/off",
       "Tooltip": "Activa o saca el delay del stream"
     }
   ],
-  "Name": "Stream delay",
+  "Name": "Stream Kit",
   "Version": "1.0.0",
   "APIVersion": "1.0",
   "SDKVersion": 1,
-  "Author": "stream-delay",
-  "Description": "Botón para el puente de delay: verde con los segundos de delay, LIVE cuando no hay delay.",
+  "Author": "Stream Kit",
+  "Description": "Botón de delay de Stream Kit: verde con los segundos de delay, rojo cuando no hay delay.",
   "Icon": "images/icon",
   "CategoryIcon": "images/icon",
-  "Category": "Stream delay",
+  "Category": "Stream Kit",
   "CodePath": "index.html",
-  "OS": [{ "Platform": "windows", "MinimumVersion": "7" }]
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "7"
+    }
+  ]
 }

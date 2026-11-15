@@ -65,4 +65,17 @@ assert obs.clave_anterior({'type': 'rtmp_common', 'settings': {'service': 'Twitc
 os.makedirs(os.path.join(obs.CARPETA, 'logs'))
 escribir(os.path.join(obs.CARPETA, 'logs', '1.txt'), '==== Streaming Start ====\n==== Streaming Stop ====\n==== Streaming Start ====\n')
 assert obs.transmitiendo()
+
+# paneles de OBS: se suman al que ya había, no se repiten, y la dirección queda tal cual
+poner = os.path.join(obs.CARPETA, 'user.ini')
+obs.poner_ini(poner, 'BasicWindow', 'ExtraBrowserDocks', '[{"title": "Chat", "url": "http://127.0.0.1:8080/chat", "uuid": "a"}]')
+r = obs.agregar_dock('Stream Kit', 'http://127.0.0.1:8080/', abierto=())
+assert not r['ya_estaba'] and [d['title'] for d in obs.docks()] == ['Chat', 'Stream Kit'] and obs.docks()[1]['url'] == 'http://127.0.0.1:8080/'
+assert obs.agregar_dock('Chat', 'http://127.0.0.1:8080/chat', abierto=())['ya_estaba']
+assert len(obs.docks()) == 2 and 'ProfileDir=MiPerfil' in leer(poner)
+try:
+    obs.agregar_dock('Otro', 'http://127.0.0.1:8080/x', abierto=(1, 'x'))
+    raise AssertionError('abierto sin permiso')
+except ValueError:
+    pass
 print('ok')
