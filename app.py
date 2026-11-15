@@ -11,7 +11,7 @@ Es lo que arranca el .exe, y también desde el código fuente:
 import os
 import sys
 
-VERSION = '0.2.0'
+VERSION = '0.3.0'
 
 
 def main():
