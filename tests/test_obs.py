@@ -1,4 +1,7 @@
-# python test_obs.py: Autoconfigurar OBS sobre una carpeta de OBS inventada. No toca tu OBS ni lo cierra
+# python tests/test_obs.py: Autoconfigurar OBS sobre una carpeta de OBS inventada. No toca tu OBS ni lo cierra
+import os as _os, sys as _sys
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.join(_RAIZ, 'streamkit'))  # el código está en streamkit/
 import json, os, tempfile
 import obs
 

@@ -1,4 +1,7 @@
-# python test_cuentas.py: sin internet y sin tocar tu config. Prueba la pantalla de Configuración: qué acepta, qué borra y los logins
+# python tests/test_cuentas.py: sin internet y sin tocar tu config. Prueba la pantalla de Configuración: qué acepta, qué borra y los logins
+import os as _os, sys as _sys
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.join(_RAIZ, 'streamkit'))  # el código está en streamkit/
 import json, os, tempfile, time, urllib.error
 os.environ["STREAMKIT_DATOS"] = tempfile.mkdtemp()  # config de ejemplo en una carpeta aparte: no toca la tuya
 import cuentas as c

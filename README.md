@@ -93,9 +93,18 @@ Necesita Python 3.11 o más nuevo y ffmpeg. No usa dependencias.
 pythonw app.py
 ```
 
-Pruebas, sin internet y sin tocar tu config ni tu OBS: `python test_chatbot.py`, `test_cuentas.py`, `test_panel.py`,
-`test_canal.py`, `test_metricas.py`, `test_obs.py`, `test_deck.py` y `test_delay.py` (este último simula OBS durante
-unos minutos).
+| Carpeta | Qué tiene |
+| --- | --- |
+| `app.py` | Lo que arranca todo: el guardián, el delay o el bot según la opción |
+| `streamkit/` | El código: `delay.py` (OBS, delay y la web), `chatbot.py` (el bot), `guardian.py`, `cuentas.py` (claves y logins), `canal.py` (título), `obs.py`, `deck.py`, `metricas.py` |
+| `web/` | Las pantallas del panel |
+| `recursos/` | Íconos, el botón de Stream Deck y StreamDock, y las configs de ejemplo |
+| `tests/` | Las pruebas |
+| `datos/` | Tu config, tus sesiones y los logs cuando corrés desde el código. No se sube |
+
+Pruebas, sin internet y sin tocar tu config ni tu OBS: `python tests/test_chatbot.py`, y lo mismo con `test_cuentas`,
+`test_panel`, `test_canal`, `test_metricas`, `test_obs`, `test_deck` y `test_delay` (este último simula OBS durante unos
+minutos).
 
 Para armar el .exe en tu PC: `python -m pip install pyinstaller` y `python build.py`. Deja el zip en `dist/`, listo
 para subir como release con `gh release create`.

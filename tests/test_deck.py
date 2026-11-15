@@ -1,10 +1,13 @@
-# python test_deck.py: el botón de delay en Stream Deck y StreamDock, sobre carpetas inventadas. No toca tus botoneras
+# python tests/test_deck.py: el botón de delay en Stream Deck y StreamDock, sobre carpetas inventadas. No toca tus botoneras
+import os as _os, sys as _sys
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.join(_RAIZ, 'streamkit'))  # el código está en streamkit/
 import json, os, tempfile
 import deck
 
 raiz = tempfile.mkdtemp()
 deck.APPS = {n: (os.path.join(raiz, n), sub, exe) for n, (_, sub, exe) in deck.APPS.items()}
-origen = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'streamdock')
+origen = os.path.join(_RAIZ, 'recursos', 'streamdock')
 reinicios = []
 assert deck.apps() == [] and deck.instalar(origen, 'http://127.0.0.1:8080', 't', reinicios.append) == [], 'sin botoneras no hace nada'
 

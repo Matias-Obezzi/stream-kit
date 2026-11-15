@@ -32,9 +32,8 @@ import deck
 import metricas
 import obs
 import panel_bot
-from rutas import DATOS, PROGRAMA, config as ruta_config
+from rutas import DATOS, RECURSOS, WEB, config as ruta_config
 
-HERE = PROGRAMA  # páginas, íconos y el botón de StreamDock
 VIDEOS = os.path.join(DATOS, 'videos')
 IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
 UPLOAD_EXT = IMAGE_EXT + ('.mp4', '.mov', '.mkv', '.webm', '.flv', '.avi')
@@ -627,7 +626,7 @@ def tray(bridge, cfg, url, quit_app):
 
     WM_TRAY, WM_TIMER, WM_HOTKEY = 0x8001, 0x0113, 0x0312
     taskbar_created = u32.RegisterWindowMessageW('TaskbarCreated')
-    icons = {on: u32.LoadImageW(None, os.path.join(HERE, 'icons', f'{"on" if on else "off"}.ico'), 1, 0, 0, 0x50)
+    icons = {on: u32.LoadImageW(None, os.path.join(RECURSOS, 'icons', f'{"on" if on else "off"}.ico'), 1, 0, 0, 0x50)
              for on in (True, False)}
     nid = NOTIFYICONDATAW()
     last = ['']
@@ -783,7 +782,7 @@ def panel(bridge, cfg_path):
             self.wfile.write(body)
 
         def page(self, name, ctype='text/html; charset=utf-8'):
-            with open(os.path.join(HERE, name), 'rb') as f:
+            with open(os.path.join(WEB, name), 'rb') as f:
                 return self.reply(200, f.read(), ctype)
 
         def error(self, msg):
@@ -1029,7 +1028,7 @@ def install_streamdock(cfg, cfg_path):
     """El botón de delay en Stream Deck o StreamDock, con una clave propia: así ninguna página web puede tocar el delay."""
     cfg['deck_token'] = cfg.get('deck_token') or secrets.token_urlsafe(16)
     save_config(cfg, cfg_path)
-    hechas = deck.instalar(os.path.join(HERE, 'streamdock'), f"http://127.0.0.1:{cfg.get('panel_port', 8080)}", cfg['deck_token'])
+    hechas = deck.instalar(os.path.join(RECURSOS, 'streamdock'), f"http://127.0.0.1:{cfg.get('panel_port', 8080)}", cfg['deck_token'])
     print('Botón instalado en: ' + (', '.join(h['nombre'] for h in hechas) or 'ninguna botonera (no encontré Stream Deck ni StreamDock)'))
     return hechas
 

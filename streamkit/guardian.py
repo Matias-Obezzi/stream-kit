@@ -13,7 +13,7 @@ import sys
 import time
 import webbrowser
 
-from rutas import BOT, CONGELADO, DATOS, PROGRAMA
+from rutas import BOT, CONGELADO, DATOS, RAIZ
 
 AQUI = DATOS
 ESTADO = os.path.join(AQUI, 'servicios.json')  # lo lee el panel
@@ -58,7 +58,7 @@ class Servicio:
 
     def arrancar(self):
         # el mismo programa con otra opción: el .exe solo, o python con app.py desde el código fuente
-        programa = [sys.executable] if CONGELADO else [sys.executable, os.path.join(PROGRAMA, 'app.py')]
+        programa = [sys.executable] if CONGELADO else [sys.executable, os.path.join(RAIZ, 'app.py')]
         if self.nombre == 'delay':
             self.proc = subprocess.Popen([*programa, '--delay', *self.extra.split()], cwd=AQUI)
         else:

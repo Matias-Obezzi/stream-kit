@@ -1,4 +1,7 @@
-# python test_metricas.py: el cálculo de /metricas con mediciones inventadas, y una lectura real de este mismo proceso
+# python tests/test_metricas.py: el cálculo de /metricas con mediciones inventadas, y una lectura real de este mismo proceso
+import os as _os, sys as _sys
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.join(_RAIZ, 'streamkit'))  # el código está en streamkit/
 import os
 import metricas as m
 

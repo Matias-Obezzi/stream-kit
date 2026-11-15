@@ -1,8 +1,11 @@
-# python test_chatbot.py: sin internet ni token, prueba cómo lee el chat y qué decide
+# python tests/test_chatbot.py: sin internet ni token, prueba cómo lee el chat y qué decide
+import os as _os, sys as _sys
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.join(_RAIZ, 'streamkit'))  # el código está en streamkit/
 import io, json, os, sys, tempfile, urllib.error
 os.environ["STREAMKIT_DATOS"] = tempfile.mkdtemp()  # config de ejemplo en una carpeta aparte: no toca la tuya
 os.makedirs(os.path.join(os.environ["STREAMKIT_DATOS"], "bot"))
-_ejemplo = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot", "config.example.json"), encoding="utf-8"))
+_ejemplo = json.load(open(os.path.join(_RAIZ, "recursos", "ejemplos", "bot", "config.json"), encoding="utf-8"))
 _ejemplo.update(bot="tubot", canal="tucanal", kick_bot="tubot", kick_broadcaster_id=123, client_id="cid", kick_client_id="kid")
 _ejemplo["comandos"]["!kick"] = {"respuesta": "https://kick.com/tucanal", "espera": 15}
 json.dump(_ejemplo, open(os.path.join(os.environ["STREAMKIT_DATOS"], "bot", "config.json"), "w", encoding="utf-8"))

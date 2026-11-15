@@ -1,4 +1,7 @@
-# python test_panel.py: sin internet y sin tocar el bot real. Prueba qué acepta el panel y cómo espera el guardián
+# python tests/test_panel.py: sin internet y sin tocar el bot real. Prueba qué acepta el panel y cómo espera el guardián
+import os as _os, sys as _sys
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.join(_RAIZ, 'streamkit'))  # el código está en streamkit/
 import os, tempfile
 os.environ["STREAMKIT_DATOS"] = tempfile.mkdtemp()  # config de ejemplo en una carpeta aparte: no toca la tuya
 import json, os, tempfile

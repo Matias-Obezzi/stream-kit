@@ -1,4 +1,7 @@
-# python test_canal.py: sin internet y sin tocar tus sesiones. Prueba qué lee, qué manda y qué rechaza el cambio de título
+# python tests/test_canal.py: sin internet y sin tocar tus sesiones. Prueba qué lee, qué manda y qué rechaza el cambio de título
+import os as _os, sys as _sys
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.join(_RAIZ, 'streamkit'))  # el código está en streamkit/
 import os, tempfile
 os.environ["STREAMKIT_DATOS"] = tempfile.mkdtemp()  # config de ejemplo en una carpeta aparte: no toca la tuya
 import io, json, os, tempfile, urllib.error

@@ -11,6 +11,8 @@ Es lo que arranca el .exe, y también desde el código fuente:
 import os
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'streamkit'))  # el código vive en streamkit/
+
 VERSION = '0.3.0'
 
 

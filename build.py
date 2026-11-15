@@ -14,21 +14,19 @@ from app import VERSION
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(AQUI, 'dist')
-# lo que va adentro del programa (las páginas, los íconos, el botón de StreamDock y las configs de ejemplo)
-DATOS = [('*.html', '.'), ('estilo.css', '.'), ('plataformas.js', '.'), ('icons', 'icons'), ('streamdock', 'streamdock'),
-         ('config.example.json', '.'), (os.path.join('bot', 'config.example.json'), 'bot')]
+# lo que va adentro del programa, con la misma forma que en el repo: las pantallas y los recursos
+DATOS = [('web', 'web'), ('recursos', 'recursos')]
 
 
 def main():
     os.chdir(AQUI)
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--windowed', '--name', 'StreamKit',
-                    '--icon', os.path.join(AQUI, 'icons', 'on.ico'), '--distpath', DIST, '--workpath', os.path.join('build', 'pyinstaller'),
+                    '--icon', os.path.join(AQUI, 'recursos', 'icons', 'on.ico'), '--paths', os.path.join(AQUI, 'streamkit'), '--distpath', DIST, '--workpath', os.path.join('build', 'pyinstaller'),
                     '--specpath', 'build', *[f'--add-data={os.path.join(AQUI, origen)}{os.pathsep}{destino}' for origen, destino in DATOS],
                     os.path.join(AQUI, 'app.py')], check=True)
     carpeta = os.path.join(DIST, 'StreamKit')
     shutil.copyfile('README.md', os.path.join(carpeta, 'LEEME.md'))
     shutil.copyfile('LICENSE', os.path.join(carpeta, 'LICENSE.txt'))
-    shutil.copyfile('instalar-streamdock.bat', os.path.join(carpeta, 'instalar-streamdock.bat'))
     zip_final = os.path.join(DIST, f'StreamKit-{VERSION}-windows.zip')
     with zipfile.ZipFile(zip_final, 'w', zipfile.ZIP_DEFLATED) as z:
         for raiz, _, archivos in os.walk(carpeta):

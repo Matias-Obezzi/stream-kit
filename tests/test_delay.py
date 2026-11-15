@@ -1,8 +1,11 @@
 """Prueba de punta a punta sin Twitch (~100 s): simula OBS con ffmpeg y graba la salida a un archivo.
 Activa el delay a los 10 s, vuelve a vivo a los 29 s y verifica que la salida decodifique limpia.
 Lo hace dos veces: con video de relleno y con el modo repetir (sin relleno).
-Uso: python test_delay.py
+Uso: python tests/test_delay.py
 """
+import os as _os, sys as _sys
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.join(_RAIZ, 'streamkit'))  # el código está en streamkit/
 import json
 import os
 import subprocess
@@ -10,8 +13,7 @@ import sys
 import tempfile
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+HERE = _os.path.join(_RAIZ, 'streamkit')
 import delay  # noqa: E402
 
 # OBS corta mientras pasa el video: el puente tiene que cerrar Twitch, no repetir el video para siempre
@@ -46,7 +48,7 @@ assert delay.Output('ffmpeg', 'rtmp://live.twitch.tv/app/x').vod_track and not d
 for mode in ('text', 'rewind'):
     tmp = tempfile.mkdtemp()
     outs = [os.path.join(tmp, n) for n in ('twitch.tv.flv', 'otro.flv')]  # solo el de Twitch lleva la pista del VOD
-    cfg = json.load(open(os.path.join(HERE, 'config.example.json'), encoding='utf-8'))
+    cfg = json.load(open(os.path.join(_RAIZ, 'recursos', 'ejemplos', 'config.json'), encoding='utf-8'))
     cfg.update(destinations=[{'id': str(i), 'name': f'archivo {i}', 'url': o, 'key': '', 'enabled': True}
                              for i, o in enumerate(outs)],
                filler_mode=mode, filler_text='Ya volvemos\nen un ratito', delay_seconds=8, resolution='640x360',
