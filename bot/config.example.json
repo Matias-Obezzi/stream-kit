@@ -1,0 +1,43 @@
+{
+  "client_id": "",
+  "bot": "",
+  "canal": "",
+  "kick_client_id": "",
+  "kick_bot": "",
+  "kick_canal_slug": "",
+  "kick_broadcaster_id": 0,
+  "kick_chatroom": 0,
+  "kick_canal": 0,
+  "kick_pusher_clave": "34bf7a0ff419a2a775b9",
+  "kick_pusher_cluster": "us2",
+  "comandos": {
+    "!redes": {
+      "respuesta": "Todas mis redes en https://ejemplo.com",
+      "espera": 15
+    },
+    "!reglas": {
+      "respuesta": "Respeto, sin spam ni autopromoción. Links truchos: ban directo",
+      "espera": 15
+    }
+  },
+  "banear_frases": [
+    "streamboo",
+    "stream boo com",
+    "dogehype",
+    "best viewers on",
+    "cheap viewers on",
+    "wanna become famous",
+    "followers primes and viewers",
+    "(remove the space)"
+  ],
+  "no_banear": [
+    "streamboost"
+  ],
+  "espera_lista_comandos": 15,
+  "timers": [
+    {
+      "texto": "Escribí !redes para ver todas mis redes",
+      "minutos": 15
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream Kit</title>
+<link rel="stylesheet" href="/estilo.css">
+</head>
+<body>
+<header>
+  <h1>Stream Kit</h1>
+</header>
+<main>
+  <p class="aviso" id="aviso" role="status" hidden></p>
+  <section class="card" id="pasos" hidden>
+    <h2>Primeros pasos</h2>
+    <ul class="lineas" id="pasos-lista"></ul>
+  </section>
+  <section class="servicios">
+    <a class="card servicio" href="/delay">
+      <div class="titulo"><h2>Delay</h2><span class="pill" id="delay-pill">Conectando…</span></div>
+      <ul class="lineas" id="delay-lineas"></ul>
+      <span class="ir">Abrir delay →</span>
+    </a>
+    <a class="card servicio" href="/bot">
+      <div class="titulo"><h2>Bot</h2><span class="pill" id="bot-pill">Conectando…</span></div>
+      <ul class="lineas" id="bot-lineas"></ul>
+      <span class="ir">Personalizar el bot →</span>
+    </a>
+    <a class="card servicio" href="/chat">
+      <div class="titulo"><h2>Chat</h2></div>
+      <ul class="lineas"><li><span class="dot">Twitch y Kick juntos, con las alertas</span></li>
+        <li><span class="dot">Campanita con filtros para cada mensaje</span></li></ul>
+      <span class="ir">Abrir chat →</span>
+    </a>
+    <a class="card servicio" href="/canal">
+      <div class="titulo"><h2>Título y categoría</h2></div>
+      <ul class="lineas"><li><span class="dot">Lo cambiás una vez y se cambia en Twitch y Kick</span></li></ul>
+      <span class="ir">Cambiar título →</span>
+    </a>
+    <a class="card servicio" href="/metricas">
+      <div class="titulo"><h2>Consumo</h2></div>
+      <ul class="lineas"><li><span class="dot">Cuánta CPU, memoria y red usa cada parte</span></li></ul>
+      <span class="ir">Ver consumo →</span>
+    </a>
+    <a class="card servicio" href="/config" id="config-card">
+      <div class="titulo"><h2>Configuración</h2></div>
+      <ul class="lineas"><li><span class="dot">Claves de Twitch y Kick, y las cuentas conectadas</span></li></ul>
+      <span class="ir">Configurar →</span>
+    </a>
+  </section>
+
+  <details class="card ayuda">
+    <summary>Cómo se usa</summary>
+    <ol>
+      <li><b>Delay</b>: OBS transmite a esta app y la app a Twitch, Kick, YouTube o las que agregues. Con un botón le ponés
+        delay al stream, sin cortarlo.</li>
+      <li><b>Bot</b>: comandos, mensajes automáticos, ban a los bots de publicidad y <code>!clip</code>, en Twitch y Kick a la vez.</li>
+      <li><b>Chat</b>: los dos chats juntos, con campanita y moderación con click derecho. Sirve como panel de OBS.</li>
+      <li><b>Título y categoría</b>: los cambiás una vez y se cambian en las dos plataformas.</li>
+      <li>La app queda en la bandeja, al lado del reloj. <b>Salir</b> cierra todo. Para que arranque con Windows, poné un acceso
+        directo a <code>StreamKit.exe</code> en la carpeta de inicio (Win+R → <code>shell:startup</code>).</li>
+    </ol>
+  </details>
+
+  <section class="card" id="phone-card" hidden>
+    <h2>Desde el celular</h2>
+    <p class="hint">Con el celular en el mismo Wi-Fi, abrí este link (mandátelo por WhatsApp, por ejemplo). Lleva una
+      clave: no lo compartas.</p>
+    <div class="row" style="margin-top:12px">
+      <input id="phone" class="grow" readonly aria-label="Link para el celular">
+      <button id="phone-copy">Copiar</button>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const TEXTOS = { conectado: 'conectado', conectando: 'conectando', reconectando: 'reconectando', vencida: 'sesión vencida: hay que hacer el login', 'sin conectar': 'sin conectar', 'falta permiso': 'falta hacer el login de nuevo' };
+
+function lineas(id, items) {
+  $(id).replaceChildren(...items.map(([clase, texto]) => {
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.className = 'dot ' + clase;
+    span.textContent = texto;
+    li.append(span);
+    return li;
+  }));
+}
+function pill(id, clase, texto) { $(id).className = 'pill ' + clase; $(id).textContent = texto; }
+$('phone-copy').onclick = () => navigator.clipboard.writeText($('phone').value).then(() => $('phone-copy').textContent = 'Copiado');
+const reinicios = s => s.reinicios ? [['medio', `Se reinició ${s.reinicios} ${s.reinicios === 1 ? 'vez' : 'veces'} · última: ${s.ultimo_fallo}`]] : [];
+
+function plataforma(nombre, valor) {
+  const clase = valor === 'conectado' ? 'on' : ['conectando', 'reconectando'].includes(valor) ? 'medio' : 'err';
+  return [clase, `${nombre}: ${TEXTOS[valor] || 'sin datos'}`];
+}
+
+async function tick() {
+  let delay, info;
+  try {
+    [delay, info] = await Promise.all(['/api/state', '/api/bot'].map(u => fetch(u).then(r => r.json())));
+  } catch {
+    // esta página la sirve el proceso del delay: si no contesta, es él el que no está
+    $('aviso').hidden = false;
+    $('aviso').textContent = 'El delay no contesta. Si se cayó, el guardián lo levanta en unos segundos y esta página se actualiza sola.';
+    pill('delay-pill', 'mal', 'Sin respuesta');
+    pill('bot-pill', '', 'Sin datos');
+    lineas('delay-lineas', []);
+    lineas('bot-lineas', []);
+    return;
+  }
+  $('phone-card').hidden = !delay.phone;
+  if (delay.phone) $('phone').value = delay.phone;
+  $('aviso').hidden = info.guardian;
+  $('aviso').textContent = 'El guardián no está corriendo: si algo se cae, no se va a levantar solo. Cerrá Stream Kit desde la bandeja y abrilo de nuevo.';
+
+  pasos(delay);
+  const modo = { live: ['bien', 'Sin delay'], filler: ['medio', `Activando · ${delay.filler_left} s`], delayed: ['medio', `En diferido · ${delay.delay} s`] }[delay.mode];
+  pill('delay-pill', ...modo);
+  const activas = delay.destinations.filter(d => d.enabled);
+  lineas('delay-lineas', [
+    [delay.obs ? 'on' : '', delay.obs ? 'OBS conectado' : 'Esperando a OBS'],
+    ...activas.map(d => [d.state === 'live' ? 'on' : d.state === 'error' ? 'err' : '',
+      `${d.name}: ${d.state === 'live' ? 'transmitiendo' : d.state === 'error' ? d.error : 'en espera'}`]),
+    ...reinicios(info.delay),
+  ]);
+
+  const bot = info.bot;
+  if (!bot.vivo) {
+    pill('bot-pill', 'mal', 'Caído');
+    lineas('bot-lineas', [['err', info.guardian ? 'El guardián lo está levantando' : 'No está corriendo'], ...reinicios(bot)]);
+    return;
+  }
+  const estados = [bot.twitch, bot.kick];
+  const todo = estados.every(e => e === 'conectado');
+  const volviendo = estados.some(e => e === 'conectando' || e === 'reconectando');
+  pill('bot-pill', ...(todo ? ['bien', 'Andando'] : volviendo ? ['medio', 'Conectando'] : estados.some(e => e === 'conectado') ? ['medio', 'A medias'] : ['mal', 'Sin chats']));
+  lineas('bot-lineas', [plataforma('Twitch', bot.twitch), plataforma('Kick', bot.kick),
+    ...(bot.follows ? [plataforma('Follows de Twitch', bot.follows)] : []), ...reinicios(bot)]);
+}
+// lo que falta para arrancar: desaparece cuando está todo. La config solo se lee desde la PC (desde el celular no)
+let config = null;
+async function leerConfig() {
+  try { const r = await fetch('/api/config'); config = r.ok ? await r.json() : null; } catch { config = null; }
+}
+function pasos(delay) {
+  const items = [];
+  if (!delay.ffmpeg) items.push(['err', 'Falta instalar ffmpeg. En una terminal: winget install ffmpeg. Después cerrá Stream Kit desde la bandeja y abrilo de nuevo.']);
+  if (config) {
+    const c = config.config, cuentas = Object.values(config.cuentas);
+    if (!c.client_id && !c.kick_client_id) items.push(['err', 'Cargá las claves de tu app de Twitch o de Kick en Configuración.']);
+    else if (!cuentas.some(x => x.conectada)) items.push(['medio', 'Conectá tus cuentas en Configuración.']);
+  }
+  if (!delay.destinations.length) items.push(['medio', 'Poné tu clave de transmisión en Configuración, en la pestaña de cada plataforma (Transmisión).']);
+  if (!delay.obs && !delay.destinations.some(d => d.state === 'live')) items.push(['', 'En OBS, transmití a rtmp://127.0.0.1:1935/live con la clave stream (está explicado en Delay).']);
+  $('pasos').hidden = items.length === 0 || (items.length === 1 && items[0][0] === '');  // solo "transmití desde OBS": ya está todo listo
+  lineas('pasos-lista', items);
+}
+leerConfig().then(tick); setInterval(tick, 2000); setInterval(leerConfig, 10000);
+</script>
+</body>
+</html>

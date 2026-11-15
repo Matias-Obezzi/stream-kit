@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Stream delay</title></head>
+<body>
+<!-- config.js lo escribe instalar-streamdock.bat: define BRIDGE y TOKEN -->
+<script src="config.js"></script>
+<script>
+// Botón de StreamDock: al tocarlo activa o saca el delay; la tecla muestra el estado del puente.
+let ws, state;
+const keys = new Map();  // context de cada tecla -> última imagen enviada
+
+function lines(s) {
+  if (!s) return ['#3f3f46', 'SIN', 'PUENTE'];
+  if (s.mode === 'live') return ['#dc2626', 'DELAY', 'OFF'];
+  if (s.mode === 'filler') return ['#16a34a', 'ACTIVANDO', `${s.filler_left}s`];
+  return ['#16a34a', 'DELAY', `${Math.round(s.delay)}s`];
+}
+
+function fit(g, text, size, y) {  // achica la letra hasta que entre en la tecla
+  do g.font = `bold ${size--}px sans-serif`; while (g.measureText(text).width > 128 && size > 10);
+  g.fillText(text, 72, y);
+}
+
+function image(s) {
+  const [bg, small, big] = lines(s);
+  const c = document.createElement('canvas');
+  c.width = c.height = 144;
+  const g = c.getContext('2d');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 144, 144);
+  g.fillStyle = '#fff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  fit(g, small, 22, 44);
+  fit(g, big, 52, 92);
+  return c.toDataURL('image/png');
+}
+
+function render() {
+  const img = image(state);
+  for (const [context, last] of keys) {
+    if (last === img || !ws || ws.readyState !== 1) continue;
+    ws.send(JSON.stringify({ event: 'setImage', context, payload: { image: img, target: 0 } }));
+    keys.set(context, img);
+  }
+}
+
+async function poll() {
+  try { state = await (await fetch(BRIDGE + '/api/deck', { cache: 'no-store' })).json(); }
+  catch { state = null; }
+  render();
+}
+
+async function toggle(context) {
+  try {
+    const r = await fetch(`${BRIDGE}/api/deck/toggle?${encodeURIComponent(TOKEN)}`, { method: 'POST' });
+    if (!r.ok) throw r;
+  } catch {
+    ws.send(JSON.stringify({ event: 'showAlert', context }));
+  }
+  poll();
+}
+
+function connect(port, uuid, registerEvent) {
+  ws = new WebSocket('ws://127.0.0.1:' + port);
+  ws.onopen = () => ws.send(JSON.stringify({ event: registerEvent, uuid }));
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.event === 'willAppear') { keys.set(m.context, null); render(); }
+    if (m.event === 'willDisappear') keys.delete(m.context);
+    if (m.event === 'keyUp') toggle(m.context);
+  };
+}
+window.connectElgatoStreamDeckSocket = window.connectMiraBoxSDSocket = window.connectSDSocket = connect;
+
+// timer en un worker: la página del plugin está oculta y el navegador frena los setInterval normales
+const tick = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 1000)'])));
+tick.onmessage = poll;
+poll();
+</script>
+</body>
+</html>

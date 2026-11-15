@@ -1,0 +1,31 @@
+{
+  "Actions": [
+    {
+      "UUID": "com.streamdelay.toggle.action",
+      "Icon": "images/icon",
+      "States": [
+        {
+          "Image": "images/key",
+          "TitleAlignment": "middle",
+          "FontSize": "12"
+        }
+      ],
+      "Controllers": ["Keypad"],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false,
+      "Name": "Delay on/off",
+      "Tooltip": "Activa o saca el delay del stream"
+    }
+  ],
+  "Name": "Stream delay",
+  "Version": "1.0.0",
+  "APIVersion": "1.0",
+  "SDKVersion": 1,
+  "Author": "stream-delay",
+  "Description": "Botón para el puente de delay: verde con los segundos de delay, LIVE cuando no hay delay.",
+  "Icon": "images/icon",
+  "CategoryIcon": "images/icon",
+  "Category": "Stream delay",
+  "CodePath": "index.html",
+  "OS": [{ "Platform": "windows", "MinimumVersion": "7" }]
+}

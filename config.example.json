@@ -1,0 +1,20 @@
+{
+  "listen_port": 1935,
+  "panel_port": 8080,
+  "open_panel": true,
+  "delay_seconds": 15,
+  "resolution": "1920x1080",
+  "fps": 60,
+  "video_bitrate_kbps": 8000,
+  "hotkey_delay": "ctrl+shift+F9",
+  "hotkey_live": "ctrl+shift+F10",
+  "ffmpeg": "",
+  "filler_loops": 3,
+  "filler_text": "Activando delay",
+  "filler_file": "",
+  "filler_mode": "text",
+  "destinations": [],
+  "panel_lan": false,
+  "deck_token": "",
+  "lan_key": ""
+}

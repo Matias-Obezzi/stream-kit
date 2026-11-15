@@ -1,0 +1,18 @@
+# tus datos: claves, sesiones, config y logs. Nunca se suben
+config.json
+bot/config.json
+bot/token*.json
+bot/estado.json
+bot/eventos.json
+bot/*.log
+servicios.json
+*.log
+*.tmp
+filler.flv
+filler_text.txt
+videos/
+# lo que arma build.py
+build/
+dist/
+__pycache__/
+*.spec

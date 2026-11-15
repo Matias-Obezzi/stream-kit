@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delay · Stream Kit</title>
+<link rel="stylesheet" href="/estilo.css">
+<script src="/plataformas.js"></script>
+</head>
+<body>
+<header>
+  <a class="volver" href="/">← Inicio</a>
+  <h1>Delay</h1>
+  <span id="obs" class="dot">OBS</span>
+  <span id="sending" class="dot">Enviando</span>
+  <button id="preview-btn" class="ghost" aria-pressed="true">Preview: encendido</button>
+  <div id="pill" class="pill" role="status" aria-live="polite">Conectando…</div>
+</header>
+<main>
+  <details class="card ayuda">
+    <summary>Cómo se usa</summary>
+    <ol>
+      <li>En OBS: Ajustes → Emisión → Servicio <b>Personalizado</b>. Servidor <code>rtmp://127.0.0.1:1935/live</code>, clave
+        <code>stream</code>. Desactivá la transmisión mejorada (multipista) y usá H.264.</li>
+      <li>Poné tu clave de transmisión en <a href="/config">Configuración</a>, en la pestaña de cada plataforma (Twitch,
+        Kick, YouTube, Facebook, TikTok, Instagram, X u otras). Abajo, en <b>Plataformas</b>, se ve cómo está cada una. OBS
+        manda una vez a esta app y la app transmite a todas.</li>
+      <li>Transmitís desde OBS como siempre. Cuando quieras delay, tocá <b>Activar delay</b> (o <code>Ctrl+Shift+F9</code>):
+        mientras junta los segundos, sale el video o el texto que elijas abajo. <b>Volver a vivo</b> (<code>Ctrl+Shift+F10</code>)
+        lo saca.</li>
+      <li>Poné en la config la misma resolución, FPS y bitrate que en OBS: el video de relleno se arma con esos valores.</li>
+    </ol>
+    <p class="hint">Si usás la pista de VOD de Twitch (audio sin música para el VOD), la app se la manda solo a Twitch. Mirá
+      el README para activarla en OBS.</p>
+  </details>
+  <section class="previews" id="previews">
+    <figure>
+      <figcaption>En el stream <small>lo que ve tu audiencia</small></figcaption>
+      <div class="frame nosignal" id="out-frame"><img id="out" alt="Lo que sale a las plataformas"><span class="empty">Offline</span></div>
+    </figure>
+    <figure>
+      <figcaption>Ahora mismo <small>lo que manda OBS</small></figcaption>
+      <div class="frame nosignal" id="in-frame"><img id="in" alt="Lo que manda OBS ahora"><span class="empty">Offline</span></div>
+    </figure>
+  </section>
+
+  <section class="actions">
+    <button id="on" disabled>Activar delay</button>
+    <button id="off" disabled>Volver a vivo</button>
+  </section>
+
+  <section class="card">
+    <h2>Plataformas</h2>
+    <ul class="dests" id="dests"></ul>
+    <p class="hint" id="no-dests" hidden>Todavía no hay ninguna. Poné tu clave de transmisión en
+      <a href="/config">Configuración</a>, en la pestaña de cada plataforma.</p>
+    <p class="hint">El interruptor pausa una plataforma sin cortar las demás. Las claves se cambian en
+      <a href="/config">Configuración</a>.</p>
+  </section>
+
+  <section class="card">
+    <h2>Qué se muestra mientras se activa el delay</h2>
+    <div class="tabs" role="group" aria-label="Tipo">
+      <button id="tab-file" aria-pressed="true">Video o imagen</button>
+      <button id="tab-text" aria-pressed="false">Texto</button>
+      <button id="tab-rewind" aria-pressed="false">Nada: repetir al instante</button>
+    </div>
+    <p class="hint" id="mode-rewind" hidden>Al activar el delay, tu audiencia vuelve a ver los últimos segundos y queda
+      en diferido al instante, sin video de relleno. La app guarda esos segundos en memoria (~60 MB por minuto a 8000 kbps).</p>
+    <div id="mode-file" class="row">
+      <label class="grow">Archivo<select id="file"></select></label>
+      <label id="loops-wrap">Veces en bucle<input id="loops" type="number" min="1" max="100" step="1" value="1"></label>
+      <label>Subir video o imagen<input id="up" type="file" accept="video/*,image/*"></label>
+    </div>
+    <div id="mode-text" hidden>
+      <label>Texto (se muestra como imagen fija; Enter para otra línea)<textarea id="text" maxlength="200"></textarea></label>
+    </div>
+    <div class="row" id="secs-wrap" style="margin-top:12px">
+      <label>Segundos de delay<input id="secs" type="number" min="5" max="600" step="1"></label>
+    </div>
+    <p class="estimate" id="estimate"></p>
+    <div class="row" style="margin-top:12px"><button id="save">Guardar</button></div>
+    <p class="hint">Se aplica la próxima vez que actives el delay.</p>
+    <p class="msg" id="msg" aria-live="polite"></p>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const post = (url, body, type = 'application/json') =>
+  fetch(url, { method: 'POST', headers: { 'X-Panel': '1', 'Content-Type': type }, body });
+let dirty = false, mode = 'file', files = [], filesKey = '', destsKey = '', state;
+
+function say(el, text, error = false) { $(el).textContent = text; $(el).className = 'msg' + (error ? ' error' : ''); }
+const fmt = s => s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${Math.round(s * 10) / 10} s`;
+
+// --- plataformas ---
+function renderDests(list) {
+  const key = JSON.stringify(list);
+  if (key === destsKey) return;
+  destsKey = key;
+  $('no-dests').hidden = list.length > 0;
+  $('dests').replaceChildren(...list.map(d => {
+    const li = document.createElement('li');
+    const status = !d.enabled ? ['', 'Desactivada'] : d.state === 'live' ? ['on', 'Transmitiendo']
+      : d.state === 'error' ? ['err', 'Error: ' + d.error] : ['', 'Esperando señal de OBS'];
+    li.innerHTML = `<span class="dot ${status[0]}" aria-hidden="true"></span>
+      <div class="info"><div class="name"></div><div class="sub ${status[0] === 'err' ? 'err' : ''}"></div></div>
+      <label class="switch"><input type="checkbox"> Activa</label>
+      <a class="volver" href="/config#${plataformaDe(d)}">Configurar →</a>`;
+    li.querySelector('.name').textContent = d.name;
+    li.querySelector('.sub').textContent = `${status[1]} · ${d.url}`;
+    const cb = li.querySelector('input');
+    cb.checked = d.enabled;
+    cb.setAttribute('aria-label', `Transmitir a ${d.name}`);
+    cb.onchange = () => post('/api/destinations/enable', JSON.stringify({ id: d.id, enabled: cb.checked })).then(tick);
+    li.querySelector('a').setAttribute('aria-label', `Configurar ${d.name}`);
+    return li;
+  }));
+}
+
+// --- relleno ---
+function setMode(m) {
+  mode = m;
+  $('tab-file').setAttribute('aria-pressed', m === 'file');
+  $('tab-text').setAttribute('aria-pressed', m === 'text');
+  $('tab-rewind').setAttribute('aria-pressed', m === 'rewind');
+  $('mode-file').hidden = m !== 'file';
+  $('mode-text').hidden = m !== 'text';
+  $('mode-rewind').hidden = m !== 'rewind';
+  estimate();
+}
+const selected = () => files.find(f => f.name === $('file').value);
+function estimate() {
+  const f = selected(), video = mode === 'file' && f && f.duration;
+  $('loops-wrap').hidden = !video;
+  $('secs-wrap').hidden = !!video;
+  if (mode === 'file' && !f) return $('estimate').textContent = files.length ? 'Elegí un archivo.' : 'Subí un video o una imagen.';
+  $('estimate').textContent = video
+    ? `El video dura ${fmt(f.duration)} × ${+$('loops').value || 0} = delay de ${fmt(f.duration * (+$('loops').value || 0))}`
+    : mode === 'rewind' ? `Delay de ${fmt(+$('secs').value || 0)}: se repiten esos segundos al activarlo`
+    : `Delay de ${fmt(+$('secs').value || 0)}`;
+}
+$('tab-file').onclick = () => { dirty = true; setMode('file'); };
+$('tab-text').onclick = () => { dirty = true; setMode('text'); };
+$('tab-rewind').onclick = () => { dirty = true; setMode('rewind'); };
+for (const id of ['file', 'loops', 'secs', 'text']) $(id).addEventListener('input', () => { dirty = true; estimate(); });
+
+$('up').onchange = async () => {
+  const f = $('up').files[0];
+  if (!f) return;
+  say('msg', `Subiendo ${f.name}…`);
+  const r = await post('/api/upload?' + encodeURIComponent(f.name), f, 'application/octet-stream');
+  const j = await r.json();
+  if (!r.ok) return say('msg', j.error, true);
+  filesKey = '';
+  dirty = true;
+  await tick();
+  $('file').value = j.name;
+  $('up').value = '';
+  estimate();
+  say('msg', `${j.name} subido. Tocá Guardar para usarlo.`);
+};
+$('save').onclick = async () => {
+  const r = await post('/api/settings', JSON.stringify({
+    mode, file: $('file').value, loops: +$('loops').value, seconds: +$('secs').value, text: $('text').value }));
+  if (!r.ok) return say('msg', (await r.json()).error, true);
+  dirty = false;
+  say('msg', 'Preparando el video de delay...');
+};
+
+// --- estado ---
+async function tick() {
+  try { state = await (await fetch('/api/state')).json(); }
+  catch { $('pill').textContent = 'Sin conexión con la app'; $('pill').className = 'pill'; return; }
+  const s = state;
+  $('pill').className = 'pill ' + s.mode;
+  $('pill').textContent = s.mode === 'live' ? 'EN VIVO · sin delay'
+    : s.mode === 'filler' ? `ACTIVANDO DELAY · faltan ${s.filler_left} s` : `EN DIFERIDO · ${s.delay} s`;
+  $('on').disabled = s.mode !== 'live';
+  $('off').disabled = s.mode === 'live';
+  $('obs').classList.toggle('on', s.obs);
+  $('sending').classList.toggle('on', s.sending);
+  renderDests(s.destinations);
+  const key = JSON.stringify(s.files);
+  if (key !== filesKey) {  // solo rearmar la lista si cambió, para no pisar lo que estás eligiendo
+    filesKey = key;
+    files = s.files;
+    const keep = $('file').value;
+    $('file').replaceChildren(...files.map(f => new Option(f.duration ? `${f.name} (${fmt(f.duration)})` : `${f.name} (imagen)`, f.name)));
+    $('file').value = dirty ? keep : s.filler.file;
+  }
+  const preparing = s.busy.startsWith('Preparando');
+  if (!dirty && !preparing) {
+    $('file').value = s.filler.file;
+    $('loops').value = s.filler.loops;
+    $('secs').value = s.filler.seconds;
+    $('text').value = s.filler.text;
+    setMode(s.filler.mode);
+  }
+  if (s.busy) say('msg', s.busy, !preparing);
+  else if ($('msg').textContent.startsWith('Preparando')) say('msg', `Listo: delay de ${fmt(s.filler.seconds)}. Se usa la próxima vez que lo actives.`);
+}
+
+// --- preview: apagado no pide nada y la app apaga los decodificadores a los 5 s ---
+let preview = true;
+try { preview = localStorage.getItem('preview') !== 'off'; } catch {}
+function setPreview(on) {
+  preview = on;
+  try { localStorage.setItem('preview', on ? 'on' : 'off'); } catch {}
+  $('previews').hidden = !on;
+  $('preview-btn').textContent = on ? 'Preview: encendido' : 'Preview: apagado';
+  $('preview-btn').setAttribute('aria-pressed', on);
+}
+$('preview-btn').onclick = () => setPreview(!preview);
+setPreview(preview);
+
+async function snap(which) {
+  const r = await fetch(`/snap/${which}.jpg?t=${Date.now()}`).catch(() => null);
+  const frame = $(which + '-frame'), img = $(which);
+  if (!r || r.status !== 200) { frame.classList.add('nosignal'); return; }
+  const old = img.src;
+  img.src = URL.createObjectURL(await r.blob());
+  if (old.startsWith('blob:')) URL.revokeObjectURL(old);
+  frame.classList.remove('nosignal');
+}
+async function snaps() {
+  if (preview && !document.hidden) await Promise.all([snap('out'), snap('in')]);
+  setTimeout(snaps, 40);
+}
+
+$('on').onclick = () => post('/api/delay');
+$('off').onclick = () => post('/api/live');
+tick(); setInterval(tick, 1000);
+snaps();
+</script>
+</body>
+</html>

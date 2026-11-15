@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot · Stream Kit</title>
+<link rel="stylesheet" href="/estilo.css">
+</head>
+<body>
+<header>
+  <a class="volver" href="/">← Inicio</a>
+  <h1>Bot</h1>
+  <span id="twitch" class="dot">Twitch</span>
+  <span id="kick" class="dot">Kick</span>
+  <button id="reiniciar" class="ghost">Reiniciar bot</button>
+</header>
+<main>
+  <details class="card ayuda">
+    <summary>Cómo se usa</summary>
+    <ol>
+      <li>Primero conectá las cuentas del bot en <a href="/config">Configuración</a>. Puede ser tu propia cuenta o una nueva
+        para el bot. Si es una cuenta aparte, hacela moderadora en tu chat (<code>/mod</code> y su nombre): sin eso habla, pero
+        no puede banear ni borrar.</li>
+      <li><b>Comandos</b>: alguien escribe <code>!redes</code> y el bot contesta en ese chat. <code>!comandos</code> lista
+        todos solo. <code>!clip</code> crea un clip en Twitch: lo pueden usar vos y tus mods.</li>
+      <li><b>Mensajes automáticos</b>: salen cada tantos minutos, solo mientras estás en vivo.</li>
+      <li><b>Moderación</b>: banea al toque a quien escriba una de esas frases, como las de los bots que venden viewers.</li>
+      <li>Tocá <b>Guardar</b>: el bot se reinicia en un par de segundos y el stream no se toca.</li>
+    </ol>
+  </details>
+  <section class="card">
+    <h2>Comandos</h2>
+    <div id="comandos"></div>
+    <div class="fila">
+      <input class="nombre" value="!comandos" disabled aria-label="Nombre del comando">
+      <span class="texto hint">La lista la arma el bot solo</span>
+      <label class="unidad"><input id="espera-lista" type="number" min="0" max="3600" step="1" aria-label="Espera de !comandos, en segundos"> seg</label>
+      <button class="danger" type="button" style="visibility:hidden">Quitar</button><!-- no se puede quitar: solo guarda el lugar para que quede alineada -->
+    </div>
+    <button id="agregar" class="ghost" style="margin-top:4px">Agregar comando</button>
+    <p class="hint">Los segundos son cuánto tarda ese comando en volver a contestar en cada chat. Con 0 contesta siempre. Las respuestas no pueden empezar con / ni con punto.</p>
+  </section>
+
+  <section class="card">
+    <h2>Mensajes automáticos</h2>
+    <div id="timers"></div>
+    <button id="agregar-timer" class="ghost" style="margin-top:4px">Agregar mensaje</button>
+    <p class="hint">Cada mensaje sale con su propio tiempo, en los chats que estén en vivo. Si dos tocan a la vez, salen con un minuto de diferencia. Al guardar, los tiempos vuelven a contar desde cero.</p>
+  </section>
+
+  <section class="card">
+    <h2>Moderación</h2>
+    <label>Frases que banean, una por línea<textarea id="frases" style="min-height:140px"></textarea></label>
+    <p class="hint">Ban directo y sin aviso, sin importar mayúsculas ni signos. Evitá palabras comunes. No toca al dueño, a los mods, a los VIP ni a los subs.</p>
+    <label style="margin-top:12px">Excepciones: lo que se ignora antes de buscar esas frases<textarea id="excepciones"></textarea></label>
+  </section>
+
+  <div class="barra">
+    <button id="guardar" disabled>Guardar</button>
+    <p class="msg" id="msg" aria-live="polite">Al guardar, el bot se reinicia en un par de segundos. El stream no se toca.</p>
+  </div>
+  <p class="hint" id="ultimo-aviso"></p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const post = (url, body) => fetch(url, { method: 'POST', headers: { 'X-Panel': '1', 'Content-Type': 'application/json' }, body });
+let sucio = false, cargado = false;
+
+function say(texto, error = false) { $('msg').textContent = texto; $('msg').className = 'msg' + (error ? ' error' : ''); }
+function marcar() { sucio = true; $('guardar').disabled = false; }
+const lineasDe = id => $(id).value.split('\n').map(l => l.trim()).filter(Boolean);
+
+const numero = input => input.value === '' ? null : +input.value;  // vacío no es 0: que lo rechace al guardar
+
+function entrada(clase, valor, ayuda, maximo) {
+  const i = Object.assign(document.createElement('input'), { className: clase, value: valor, placeholder: ayuda, maxLength: maximo });
+  i.setAttribute('aria-label', ayuda);
+  return i;
+}
+
+function tiempo(valor, min, max, unidad, ayuda) {
+  const caja = Object.assign(document.createElement('label'), { className: 'unidad' });
+  const i = Object.assign(document.createElement('input'), { className: 'tiempo', type: 'number', min, max, step: 1, value: valor });
+  i.setAttribute('aria-label', ayuda);
+  caja.append(i, ' ' + unidad);
+  return caja;
+}
+
+function fila(...partes) {
+  const f = Object.assign(document.createElement('div'), { className: 'fila' });
+  const q = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'Quitar', type: 'button' });
+  q.onclick = () => { f.remove(); marcar(); };
+  f.append(...partes, q);
+  return f;
+}
+
+const filaComando = (nombre = '', c = { respuesta: '', espera: 15 }) => fila(
+  entrada('nombre', nombre, '!comando', 31),
+  entrada('texto', c.respuesta, 'Lo que contesta', 500),
+  tiempo(c.espera, 0, 3600, 'seg', 'Espera del comando, en segundos'));
+
+const filaTimer = (t = { texto: '', minutos: 10 }) => fila(
+  entrada('texto', t.texto, 'Lo que manda', 500),
+  tiempo(t.minutos, 1, 240, 'min', 'Cada cuántos minutos sale'));
+
+function cargar(c) {
+  $('comandos').replaceChildren(...Object.entries(c.comandos).map(([n, d]) => filaComando(n, d)));
+  $('espera-lista').value = c.espera_lista_comandos;
+  $('timers').replaceChildren(...c.timers.map(t => filaTimer(t)));
+  $('frases').value = c.banear_frases.join('\n');
+  $('excepciones').value = c.no_banear.join('\n');
+  sucio = false;
+  $('guardar').disabled = true;
+}
+
+function pintar(id, nombre, valor, vivo) {
+  const clase = !vivo ? 'err' : valor === 'conectado' ? 'on' : ['conectando', 'reconectando'].includes(valor) ? 'medio' : 'err';
+  $(id).className = 'dot ' + clase;
+  $(id).textContent = !vivo ? `${nombre}: bot caído` : valor === 'vencida' ? `${nombre}: sesión vencida` : `${nombre}: ${valor || 'sin datos'}`;
+}
+
+async function tick() {
+  let info;
+  try {
+    info = await (await fetch('/api/bot')).json();
+  } catch {
+    pintar('twitch', 'Twitch', '', false);
+    pintar('kick', 'Kick', '', false);
+    return;
+  }
+  if (info.error) say(info.error, true);
+  else if (!cargado) { cargar(info.config); cargado = true; }
+  pintar('twitch', 'Twitch', info.bot.twitch, info.bot.vivo);
+  pintar('kick', 'Kick', info.bot.kick, info.bot.vivo);
+  $('ultimo-aviso').textContent = info.bot.aviso ? 'Último aviso del bot: ' + info.bot.aviso : '';
+}
+
+document.querySelector('main').addEventListener('input', marcar);
+$('agregar').onclick = () => {
+  const f = filaComando('!');
+  $('comandos').append(f);
+  f.querySelector('.nombre').focus();
+  marcar();
+};
+$('agregar-timer').onclick = () => {
+  const f = filaTimer();
+  $('timers').append(f);
+  f.querySelector('.texto').focus();
+  marcar();
+};
+$('reiniciar').onclick = async () => {
+  await post('/api/bot/reiniciar');
+  say('Reiniciando el bot…');
+};
+$('guardar').onclick = async () => {
+  const comandos = {};
+  for (const f of $('comandos').children) {
+    const n = f.querySelector('.nombre').value.trim().toLowerCase();
+    if (n in comandos) return say(`${n} está dos veces.`, true);
+    comandos[n] = { respuesta: f.querySelector('.texto').value, espera: numero(f.querySelector('.tiempo')) };
+  }
+  const r = await post('/api/bot/guardar', JSON.stringify({
+    comandos,
+    espera_lista_comandos: numero($('espera-lista')),
+    timers: [...$('timers').children].map(f => ({ texto: f.querySelector('.texto').value, minutos: numero(f.querySelector('.tiempo')) })),
+    banear_frases: lineasDe('frases'),
+    no_banear: lineasDe('excepciones'),
+  })).catch(() => null);
+  if (!r) return say('El panel no contesta: probá de nuevo en unos segundos.', true);
+  const j = await r.json();
+  if (!r.ok) return say(j.error, true);
+  sucio = false;
+  $('guardar').disabled = true;
+  say(j.cambio ? 'Guardado. El bot se está reiniciando.' : 'No había nada para guardar.');
+};
+addEventListener('beforeunload', e => { if (sucio) e.preventDefault(); });
+tick(); setInterval(tick, 2000);
+</script>
+</body>
+</html>
