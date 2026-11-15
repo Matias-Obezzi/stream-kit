@@ -76,6 +76,7 @@ repetir). **Volver a vivo** corta al instante y tu audiencia salta al presente.
 
 La config, las sesiones de Twitch y Kick y los logs quedan al lado del .exe (`config.json` y la carpeta `bot/`). No se
 suben a ningún lado; no los compartas, porque con ellos se puede escribir en tu chat y cambiar tu canal.
+Para guardarlos en otra carpeta, abrí el .exe con `--datos=CARPETA` (por ejemplo, en el acceso directo).
 
 Usa los puertos 8080 (panel), 1935 (OBS) y 47612 a 47615 (internos), solo en esta PC.
 

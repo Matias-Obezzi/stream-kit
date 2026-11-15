@@ -6,13 +6,18 @@ Es lo que arranca el .exe, y también desde el código fuente:
   python app.py --bot       solo el bot (lo arranca el guardián)
   python app.py --bot --reiniciar   cierra el bot y el guardián lo vuelve a levantar
   python app.py --streamdock        instala el botón del StreamDock
+  --datos=CARPETA                   la config, las sesiones y los logs en otra carpeta (si no, al lado del .exe)
 """
+import os
 import sys
 
 VERSION = '0.2.0'
 
 
 def main():
+    datos = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--datos=')), None)
+    if datos:  # antes de importar rutas; el delay y el bot heredan la variable del guardián
+        os.environ['STREAMKIT_DATOS'] = os.path.abspath(datos)
     if '--delay' in sys.argv or '--streamdock' in sys.argv:
         import delay
         delay.main()
