@@ -3,14 +3,16 @@
 Herramientas para streamear en **Twitch y Kick** desde Windows, todo en tu PC, sin servidores ni cuentas de terceros:
 
 - **Delay a demanda y multistream**: OBS transmite una vez a la app y la app reenvía, sin recodificar, a Twitch, Kick,
-  YouTube, Facebook, TikTok, Instagram, X o cualquier RTMP, todas con el mismo delay. Con un botón (o un atajo, o un StreamDock) le ponés delay sin
-  cortar el stream.
+  YouTube, Facebook, TikTok, Instagram, X o cualquier RTMP, todas con el mismo delay. Con un botón, un atajo o una tecla
+  de Stream Deck o StreamDock le ponés delay sin cortar el stream.
 - **Bot de chat** en Twitch y Kick a la vez: comandos, mensajes automáticos, ban a los bots que venden viewers y
   `!clip`.
 - **Chat unificado** de las dos plataformas, con follows, subs, raids y bits, campanita con filtros y moderación con
   click derecho. Sirve como panel de OBS.
 - **Título, categoría y etiquetas** cambiados de una vez en Twitch y Kick.
 - **Consumo**: cuánta CPU, memoria y red usa cada parte (el delay, el bot, cada envío a una plataforma).
+- **Se configura solo**: un botón deja OBS listo, otros suman el panel y el chat adentro de OBS, y otro instala la tecla
+  de delay en Stream Deck o StreamDock.
 
 Todo se maneja desde una web local (http://127.0.0.1:8080), con un tutorial en cada pantalla.
 
@@ -91,8 +93,9 @@ Necesita Python 3.11 o más nuevo y ffmpeg. No usa dependencias.
 pythonw app.py
 ```
 
-Pruebas, sin internet y sin tocar tu config: `python test_chatbot.py`, `test_cuentas.py`, `test_panel.py`,
-`test_canal.py`, `test_metricas.py`, `test_obs.py`, `test_deck.py` y `test_delay.py` (este último simula OBS durante unos minutos).
+Pruebas, sin internet y sin tocar tu config ni tu OBS: `python test_chatbot.py`, `test_cuentas.py`, `test_panel.py`,
+`test_canal.py`, `test_metricas.py`, `test_obs.py`, `test_deck.py` y `test_delay.py` (este último simula OBS durante
+unos minutos).
 
 Para armar el .exe en tu PC: `python -m pip install pyinstaller` y `python build.py`. Deja el zip en `dist/`, listo
 para subir como release con `gh release create`.
