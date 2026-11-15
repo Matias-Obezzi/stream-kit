@@ -146,3 +146,6 @@ code { font: 13px ui-monospace, Consolas, monospace; background: var(--bg); bord
 .metricas tfoot th, .metricas tfoot td { font-weight: 700; border-bottom: 0; }
 .metricas tfoot .pc th, .metricas tfoot .pc td { color: var(--muted); font-weight: 400; }
 @media (max-width: 600px) { .metricas .sub { display: none; } }
+.cambiar-clave { flex-basis: 100%; }
+.titulo-fila { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.titulo-fila h2 { margin: 0; }

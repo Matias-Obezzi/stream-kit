@@ -29,6 +29,7 @@ from urllib.parse import unquote
 import canal
 import cuentas
 import metricas
+import obs
 import panel_bot
 from rutas import DATOS, PROGRAMA, config as ruta_config
 
@@ -816,6 +817,10 @@ def panel(bridge, cfg_path):
                 return self.page('config.html')
             if path == '/api/config':
                 return self.reply(200, json.dumps(cuentas.leer()).encode())
+            if path == '/api/obs':
+                if not self.local():
+                    return self.reply(403)
+                return self.reply(200, json.dumps({**obs.estado(cfg['listen_port']), 'a_la_app': bridge.obs_connected}).encode())
             if path == '/api/canal':
                 return self.reply(200, json.dumps(canal.leer()).encode())
             if path == '/api/canal/buscar':
@@ -903,6 +908,21 @@ def panel(bridge, cfg_path):
             if path == '/api/bot/reiniciar':
                 panel_bot.reiniciar()
                 return self.reply(200, b'{}')
+            if path == '/api/obs/configurar':
+                if not self.local():
+                    return self.reply(403)
+                try:
+                    r = obs.configurar(cfg['listen_port'], cerrar_obs=bool(s.get('cerrar')))
+                except (OSError, ValueError) as e:
+                    return self.error(str(e))
+                anterior, r['anterior'] = r['anterior'], None  # la clave no vuelve a la página
+                if anterior and not any(d['url'] == anterior[1] for d in bridge.cfg.get('destinations', [])):
+                    bridge.cfg.setdefault('destinations', []).append(
+                        {'id': secrets.token_hex(4), 'name': anterior[0], 'url': anterior[1], 'key': anterior[2], 'enabled': True})
+                    save_config(bridge.cfg, cfg_path)
+                    bridge.sync_outputs()
+                    r['importado'] = anterior[0]
+                return self.reply(200, json.dumps(r).encode())
             if path in ('/api/config/guardar', '/api/config/conectar'):
                 if not self.local():
                     return self.reply(403)
@@ -969,6 +989,15 @@ def panel(bridge, cfg_path):
                     dests.remove(d)
                 elif action == 'enable':
                     d['enabled'] = bool(s.get('enabled'))
+                elif action == 'update':  # otra clave (o URL) sin quitarla: si estaba transmitiendo, se reconecta solo ese destino
+                    url, key = str(s.get('url', d['url'])).strip(), str(s.get('key', '')).strip()
+                    if not re.fullmatch(r'rtmps?://\S+', url):
+                        return self.error('La URL tiene que empezar con rtmp:// o rtmps://')
+                    if re.search(r'\s', key) or len(key) > 300:
+                        return self.error('La clave no puede tener espacios.')
+                    d['url'] = url
+                    if key:  # vacía: queda la que estaba
+                        d['key'] = key
                 else:
                     return self.reply(404)
             save_config(bridge.cfg, cfg_path)

@@ -30,6 +30,16 @@
     <p class="hint">Todo queda guardado en esta PC; las claves no se suben a ningún lado.</p>
   </details>
 
+  <section class="card" id="obs-card">
+    <div class="titulo-fila"><h2>OBS</h2><span class="dot" id="obs-estado">Revisando…</span></div>
+    <p class="hint" style="margin:0 0 12px">Deja OBS listo para Stream Kit: transmite a esta app (servidor
+      <code>rtmp://127.0.0.1:1935/live</code>, clave <code>stream</code>), sin transmisión mejorada, y con la opción de la pista
+      de VOD de Twitch para que el VOD salga sin música. Si OBS ya transmitía a una plataforma, su clave pasa a Stream Kit.
+      Antes de cambiar nada, guarda una copia de la configuración de OBS.</p>
+    <div class="row"><button id="obs-boton">Autoconfigurar OBS</button></div>
+    <p class="msg" id="obs-msg" role="status"></p>
+  </section>
+
   <div class="tabs" role="tablist" aria-label="Plataforma">
     <button role="tab" id="tab-twitch" aria-controls="panel-twitch">Twitch</button>
     <button role="tab" id="tab-kick" aria-controls="panel-kick">Kick</button>
@@ -240,7 +250,7 @@ $('guardar').onclick = async () => {
 let destinosVistos = '';
 function transmision(destinos) {
   const clave = JSON.stringify(destinos);
-  if (clave === destinosVistos) return;  // no rearmar el formulario mientras escribís
+  if (clave === destinosVistos || document.querySelector('.cambiar-clave')) return;  // no rearmar mientras escribís
   destinosVistos = clave;
   document.querySelectorAll('[data-transmision]').forEach(card => {
     const tab = card.dataset.transmision, otras = tab === 'otras', suyos = destinos.filter(d => plataformaDe(d) === tab);
@@ -255,17 +265,43 @@ function transmision(destinos) {
         : d.state === 'error' ? ['err', 'Error: ' + d.error] : ['', 'Lista: transmite cuando OBS mande'];
       li.innerHTML = `<span class="dot ${estado[0]}" aria-hidden="true"></span>
         <div class="info"><div class="name"></div><div class="sub ${estado[0] === 'err' ? 'err' : ''}"></div></div>
-        <label class="switch"><input type="checkbox"> Activa</label><button class="danger">Quitar</button>`;
+        <label class="switch"><input type="checkbox"> Activa</label><button class="ghost cambiar">Cambiar clave</button><button class="danger">Quitar</button>`;
       li.querySelector('.name').textContent = d.name;
       li.querySelector('.sub').textContent = `${estado[1]} · ${d.url}`;
       const activa = li.querySelector('input');
       activa.checked = d.enabled;
       activa.setAttribute('aria-label', `Transmitir a ${d.name}`);
       activa.onchange = () => post('/api/destinations/enable', { id: d.id, enabled: activa.checked }).then(estadoDelay);
-      const quitar = li.querySelector('button');
+      const quitar = li.querySelector('button.danger');
       quitar.setAttribute('aria-label', `Quitar ${d.name}`);
-      quitar.onclick = () => confirm(`¿Quitar ${d.name}? Para cambiar la clave, quitala y agregala de nuevo.`)
+      quitar.onclick = () => confirm(`¿Quitar ${d.name}? Deja de transmitir ahí y se borra su clave.`)
         && post('/api/destinations/delete', { id: d.id }).then(estadoDelay);
+      const cambiarBoton = li.querySelector('button.cambiar');
+      cambiarBoton.setAttribute('aria-label', `Cambiar la clave de ${d.name}`);
+      cambiarBoton.onclick = () => {
+        if (li.querySelector('.cambiar-clave')) return;
+        const form = document.createElement('div');
+        form.className = 'cambiar-clave';
+        form.innerHTML = `<div class="row"><label class="grow">URL del servidor<input class="url" autocomplete="off" spellcheck="false"></label>
+          <label class="grow">Clave nueva<input class="clave" type="password" autocomplete="off" placeholder="Vacía: queda la que está"></label>
+          <button class="guardar">Guardar</button><button class="ghost cancelar">Cancelar</button></div><p class="msg" role="status"></p>`;
+        form.querySelector('.url').value = d.url;
+        form.querySelector('.cancelar').onclick = () => { form.remove(); destinosVistos = ''; estadoDelay(); };
+        form.querySelector('.guardar').onclick = async () => {
+          const r = await post('/api/destinations/update', { id: d.id, url: form.querySelector('.url').value, key: form.querySelector('.clave').value });
+          if (!r.ok) {
+            const m = form.querySelector('.msg');
+            m.className = 'msg error';
+            m.textContent = (await r.json()).error;
+            return;
+          }
+          form.remove();
+          destinosVistos = '';
+          estadoDelay();
+        };
+        li.append(form);
+        form.querySelector('.clave').focus();
+      };
       return li;
     }));
     const partes = [titulo, lista];
@@ -302,7 +338,56 @@ async function estadoDelay() {
   try { transmision((await (await fetch('/api/state')).json()).destinations); } catch {}
 }
 
+// --- OBS ---
+let obsEstado = null;
+async function revisarObs() {
+  try { obsEstado = await (await fetch('/api/obs')).json(); } catch { return; }
+  const e = obsEstado, punto = $('obs-estado');
+  if (!e.instalado) {
+    punto.className = 'dot err';
+    punto.textContent = 'No encontré OBS en esta PC';
+  } else if (e.configurado) {
+    punto.className = 'dot on';
+    punto.textContent = e.a_la_app ? 'Configurado y transmitiendo a Stream Kit' : 'Configurado para Stream Kit';
+  } else {
+    punto.className = 'dot medio';
+    punto.textContent = e.transmitiendo ? 'Sin configurar, y está transmitiendo' : e.abierto ? 'Sin configurar (está abierto)' : 'Sin configurar';
+  }
+  $('obs-boton').textContent = e.configurado ? 'Volver a configurar OBS' : 'Autoconfigurar OBS';
+  $('obs-boton').disabled = !e.instalado;
+}
+$('obs-boton').onclick = async () => {
+  await revisarObs();
+  const e = obsEstado;
+  if (e.abierto) {
+    const aviso = e.transmitiendo
+      ? 'OBS está TRANSMITIENDO. Para configurarlo hay que cerrarlo, y eso corta el stream en todas las plataformas.\n\n¿Lo cierro igual, lo configuro y lo vuelvo a abrir?'
+      : 'OBS está abierto. Para configurarlo hay que cerrarlo: lo cierro, lo configuro y lo vuelvo a abrir.\n\n¿Sigo?';
+    if (!confirm(aviso)) return;
+    if (e.transmitiendo && !confirm('Última confirmación: se va a cortar el stream. ¿Cierro OBS?')) return;
+  }
+  $('obs-boton').disabled = true;
+  $('obs-msg').className = 'msg';
+  $('obs-msg').textContent = e.abierto ? 'Cerrando OBS… Si te pregunta si querés salir, decile que sí.' : 'Configurando…';
+  const r = await post('/api/obs/configurar', { cerrar: e.abierto });
+  const d = await r.json();
+  $('obs-boton').disabled = false;
+  if (!r.ok) {
+    $('obs-msg').className = 'msg error';
+    $('obs-msg').textContent = d.error;
+  } else {
+    $('obs-msg').textContent = ['Listo: OBS quedó configurado.', d.reabierto ? 'Lo volví a abrir.' : 'Ya lo podés abrir.',
+      d.importado ? `La clave de ${d.importado} que tenía OBS pasó a Stream Kit.` : '',
+      'Para usar la pista de VOD de Twitch, en OBS: Ajustes → Salida → Emisión → Pista de VOD de Twitch.'].filter(Boolean).join(' ');
+    destinosVistos = '';
+    estadoDelay();
+  }
+  revisarObs();
+};
+
 leer(true);
+revisarObs();
+setInterval(revisarObs, 10000);
 estadoDelay();
 setInterval(estadoDelay, 3000);
 </script>

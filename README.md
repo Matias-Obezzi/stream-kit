@@ -32,15 +32,21 @@ Para que arranque con Windows, poné un acceso directo a `StreamKit.exe` en la c
 
 Todo desde el panel, sin terminal:
 
-1. **Configuración**: tiene una pestaña por plataforma. En Twitch y en Kick, creá una app en Twitch y otra en Kick (la pantalla explica cómo, son gratis) y pegá sus claves.
+1. **Configuración**: tiene una pestaña por plataforma. En Twitch y en Kick, creá una app (la pantalla explica cómo,
+   son gratis) y pegá sus claves.
    Después conectá las cuentas: la tuya, para cambiar el título, y la del bot, para que hable y modere. El bot puede
    usar tu propia cuenta, y hace de mod y de bot con tu nombre, o una cuenta nueva solo para él, así sus mensajes se
    distinguen de los tuyos. Si solo usás una plataforma, dejá la otra vacía.
 2. En la misma pantalla, cada plataforma (Twitch, Kick, YouTube, Facebook, TikTok, Instagram, X) tiene su pestaña con
-   su **Transmisión**: pegá ahí tu clave de transmisión. Cualquier otro servidor RTMP va en la pestaña **Otras**. En
+   su **Transmisión**: pegá ahí tu clave de transmisión. **Cambiar clave** la reemplaza sin quitarla, para las
+   plataformas que dan una nueva en cada directo. Cualquier otro servidor RTMP va en la pestaña **Otras**. En
    **Delay → Plataformas** se ve cómo está cada una y se pausa la que quieras sin cortar las demás.
-3. **OBS**: Ajustes → Emisión → Servicio **Personalizado**. Servidor `rtmp://127.0.0.1:1935/live`, clave `stream`.
-   Desactivá la transmisión mejorada (multipista) y usá H.264.
+3. **OBS**: tocá **Autoconfigurar OBS** en Configuración. Deja OBS transmitiendo a Stream Kit, sin transmisión mejorada
+   y con la pista de VOD de Twitch disponible. Si OBS está abierto, avisa (y avisa dos veces si está transmitiendo,
+   porque cerrarlo corta el stream), lo cierra, lo configura y lo vuelve a abrir. Si OBS ya transmitía a una
+   plataforma, esa clave pasa a Stream Kit. Antes guarda una copia en `%APPDATA%\obs-studio\stream-kit-respaldo`.
+   A mano: Ajustes → Emisión → Servicio **Personalizado**, servidor `rtmp://127.0.0.1:1935/live`, clave `stream`, sin
+   transmisión mejorada (multipista) y con H.264.
 4. Si el bot usa una cuenta aparte, hacelo moderador en tu chat: `/mod` y el nombre del bot, en Twitch y en Kick.
 
 Poné en `config.json` (al lado del .exe) la misma resolución, FPS y bitrate que en OBS: el video que se muestra
@@ -49,9 +55,10 @@ mientras se activa el delay se arma con esos valores.
 ### Pista de VOD de Twitch (opcional)
 
 Para que el VOD de Twitch salga sin la música que pasás en vivo, OBS tiene que mandar la pista de VOD, y con un servidor
-personalizado no la ofrece. Con OBS cerrado, agregá `EnableCustomServerVodTrack=true` en la sección `[General]` de
-`%APPDATA%\obs-studio\global.ini` y de `user.ini`. Después, en Ajustes → Salida → Emisión, marcá **Pista de VOD de
-Twitch**. La app se la manda solo a Twitch; Kick y YouTube reciben el audio principal.
+personalizado no la ofrece. **Autoconfigurar OBS** la habilita (agrega `EnableCustomServerVodTrack=true` en `[General]`
+de `global.ini` y de `user.ini`). Después, en OBS: Ajustes → Salida → Emisión, marcá **Pista de VOD de Twitch** y elegí
+qué pista usa, una que no tenga la música. La app se la manda solo a Twitch; las demás plataformas reciben el audio
+principal.
 
 ## Controles del delay
 
@@ -81,7 +88,7 @@ pythonw app.py
 ```
 
 Pruebas, sin internet y sin tocar tu config: `python test_chatbot.py`, `test_cuentas.py`, `test_panel.py`,
-`test_canal.py`, `test_metricas.py` y `test_delay.py` (este último simula OBS durante unos minutos).
+`test_canal.py`, `test_metricas.py`, `test_obs.py` y `test_delay.py` (este último simula OBS durante unos minutos).
 
 Para armar el .exe en tu PC: `python -m pip install pyinstaller` y `python build.py`. Deja el zip en `dist/`, listo
 para subir como release con `gh release create`.

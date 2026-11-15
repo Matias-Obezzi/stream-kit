@@ -153,7 +153,7 @@ function pasos(delay) {
     else if (!cuentas.some(x => x.conectada)) items.push(['medio', 'Conectá tus cuentas en Configuración.']);
   }
   if (!delay.destinations.length) items.push(['medio', 'Poné tu clave de transmisión en Configuración, en la pestaña de cada plataforma (Transmisión).']);
-  if (!delay.obs && !delay.destinations.some(d => d.state === 'live')) items.push(['', 'En OBS, transmití a rtmp://127.0.0.1:1935/live con la clave stream (está explicado en Delay).']);
+  if (!delay.obs && !delay.destinations.some(d => d.state === 'live')) items.push(['', 'Configurá OBS para Stream Kit: en Configuración está el botón Autoconfigurar OBS.']);
   $('pasos').hidden = items.length === 0 || (items.length === 1 && items[0][0] === '');  // solo "transmití desde OBS": ya está todo listo
   lineas('pasos-lista', items);
 }

@@ -19,11 +19,11 @@ const PLATAFORMAS = {
   },
   tiktok: {
     nombre: 'TikTok', servidor: '', es: d => /tiktok/i.test(d.name + ' ' + d.url),
-    pasos: 'TikTok da URL y clave solo a las cuentas que tienen habilitado transmitir con software. Si la tuya lo tiene, las generás en <a href="https://www.tiktok.com/live" target="_blank" rel="noopener">TikTok LIVE</a> desde la compu. Cambian en cada directo: quitá la vieja y pegá las nuevas antes de empezar.',
+    pasos: 'TikTok da URL y clave solo a las cuentas que tienen habilitado transmitir con software. Si la tuya lo tiene, las generás en <a href="https://www.tiktok.com/live" target="_blank" rel="noopener">TikTok LIVE</a> desde la compu. Cambian en cada directo: antes de empezar, tocá <b>Cambiar clave</b> y pegá las nuevas.',
   },
   instagram: {
     nombre: 'Instagram', servidor: '', es: d => /instagram|fbcdn\.net/i.test(d.name + ' ' + d.url),
-    pasos: 'Desde <a href="https://www.instagram.com" target="_blank" rel="noopener">instagram.com</a> en la compu: <b>Crear → En vivo</b>, elegí transmitir con software y copiá la URL y la clave. Cambian en cada directo: quitá la vieja y pegá las nuevas antes de empezar.',
+    pasos: 'Desde <a href="https://www.instagram.com" target="_blank" rel="noopener">instagram.com</a> en la compu: <b>Crear → En vivo</b>, elegí transmitir con software y copiá la URL y la clave. Cambian en cada directo: antes de empezar, tocá <b>Cambiar clave</b> y pegá las nuevas.',
   },
   x: {
     nombre: 'X', servidor: '', es: d => /pscp\.tv|periscope|twitter/i.test(d.url) || /^(x|twitter)$/i.test(d.name.trim()),
