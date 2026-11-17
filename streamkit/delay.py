@@ -837,8 +837,13 @@ def panel(bridge, cfg_path):
                 return self.reply(200, json.dumps(panel_bot.eventos(int(desde) if desde else None)).encode())
             if path == '/estilo.css':
                 return self.page('estilo.css', 'text/css; charset=utf-8')
-            if path == '/plataformas.js':
-                return self.page('plataformas.js', 'text/javascript; charset=utf-8')
+            if path in ('/plataformas.js', '/emotes.js'):
+                return self.page(path[1:], 'text/javascript; charset=utf-8')
+            if path == '/api/chat/quienes':
+                try:
+                    return self.reply(200, json.dumps(panel_bot.quienes()).encode())
+                except ValueError as e:
+                    return self.error(str(e))
             if path == '/api/bot':
                 return self.reply(200, json.dumps(panel_bot.estado_y_config()).encode())
             if path == '/api/state':

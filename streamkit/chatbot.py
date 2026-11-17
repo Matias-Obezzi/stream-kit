@@ -52,7 +52,8 @@ def parsear(linea):
     return {"usuario": m[2].lower(), "texto": m[3], "id": tags.get("id"), "user_id": tags.get("user-id"),
             "primero": tags.get("first-msg") == "1", "inmune": bool(insignias & INMUNES) or tags.get("mod") == "1",
             "manda": bool(insignias & MANDAN) or tags.get("mod") == "1",
-            "nombre": tags.get("display-name") or m[2], "color": tags.get("color", ""), "bits": int(tags.get("bits") or 0)}
+            "nombre": tags.get("display-name") or m[2], "color": tags.get("color", ""), "bits": int(tags.get("bits") or 0),
+            "emotes": tags.get("emotes", "")}  # dónde hay emotes de Twitch en el texto: id:inicio-fin,.../otro_id:...
 
 
 NIVELES = {"1000": "1", "2000": "2", "3000": "3", "Prime": "Prime"}
@@ -68,7 +69,7 @@ def parsear_aviso(linea):
     if clase == "sub":
         return {"tipo": "sub", "usuario": quien, "nivel": NIVELES.get(t.get("msg-param-sub-plan"), "")}
     if clase == "resub":
-        return {"tipo": "resub", "usuario": quien, "cantidad": numero("msg-param-cumulative-months"), "mensaje": m[2] or ""}
+        return {"tipo": "resub", "usuario": quien, "cantidad": numero("msg-param-cumulative-months"), "mensaje": m[2] or "", "emotes": t.get("emotes", "")}
     if clase == "submysterygift":
         return {"tipo": "regalo", "usuario": quien, "cantidad": numero("msg-param-mass-gift-count")}
     if clase == "subgift" and not t.get("msg-param-community-gift-id"):  # las de un regalo grupal ya salieron en su submysterygift
@@ -82,6 +83,8 @@ def emitir(**evento):
     """Suma algo al chat de la web. El id crece siempre, aunque el bot se reinicie: así la web pide solo lo nuevo."""
     with eventos["candado"]:
         evento.update(id=max(eventos["ultimo"] + 1, time.time_ns() // 1000), t=round(time.time(), 1))
+        if evento.get("tipo") == "chat":
+            escribieron.setdefault(evento.get("plataforma"), {})[evento.get("usuario")] = evento["t"]
         eventos["ultimo"] = evento["id"]
         eventos["lista"].append(evento)
         eventos["sucio"] = True
@@ -103,6 +106,9 @@ def cargar_eventos():
         with open(EVENTOS, encoding="utf-8") as f:
             viejos = json.load(f)
         eventos["lista"].extend(viejos)
+        for e in viejos:  # quién escribió en este stream sigue aunque el bot se reinicie
+            if e.get("tipo") == "chat":
+                escribieron.setdefault(e.get("plataforma"), {})[e.get("usuario")] = e.get("t", 0)
         eventos["ultimo"] = viejos[-1]["id"] if viejos else 0
     except (OSError, ValueError, KeyError, IndexError, TypeError):  # sin historial no pasa nada: el chat arranca vacío
         pass
@@ -296,11 +302,12 @@ def escuchar_ordenes():
                     if not parte:
                         break
                     datos += parte
-                error = ordenar(json.loads(datos))
+                pedido = json.loads(datos)
+                respuesta = {"error": "", "quienes": quienes()} if pedido.get("accion") == "quienes" else {"error": ordenar(pedido)}
             except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
-                error = f"Pedido inválido: {e}"
+                respuesta = {"error": f"Pedido inválido: {e}"}
             try:
-                c.sendall((json.dumps({"error": error}) + "\n").encode())
+                c.sendall((json.dumps(respuesta) + "\n").encode())
             except OSError:  # la web se cansó de esperar
                 pass
 
@@ -510,6 +517,15 @@ timers = {p: {"proximos": [time.monotonic() + t["minutos"] * 60 for t in CONFIG[
 
 
 viewers = {}  # para la vista de chat: espectadores de cada plataforma; None sin stream, sin clave si no se pudo ver
+inicio = {}  # cuándo arrancó el stream en cada plataforma
+escribieron = {}  # plataforma -> {usuario: último mensaje}; aparte de eventos, que solo guarda los últimos 300
+
+
+def fecha(texto):
+    try:
+        return datetime.datetime.fromisoformat(texto.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, ValueError):
+        return 0
 
 
 def contar_viewers():
@@ -519,9 +535,37 @@ def contar_viewers():
             try:
                 d = pedir_lista()["data"]
                 viewers[plataforma] = d[0]["viewer_count"] if d else None
+                inicio[plataforma] = fecha(d[0].get("started_at")) if d else None
             except (OSError, KeyError, ValueError):  # sin sesión todavía o sin internet: no se muestra
                 viewers.pop(plataforma, None)
         time.sleep(30)
+
+
+def quienes():
+    """Para la vista de chat: en Twitch, quién está en el chat; Kick no lo da. En las dos, quién escribió en este stream."""
+    r = {}
+    if viewers.get("twitch") is not None:
+        try:
+            if "moderator:read:chatters" not in alcances():
+                r["twitch"] = {"error": "Falta un permiso: volvé a conectar la cuenta de Twitch del bot en Configuración"}
+            else:
+                nombres, total, cursor = [], 0, ""
+                for _ in range(5):  # hasta 5000 nombres: más no entran en la vista
+                    consulta = urllib.parse.urlencode({"broadcaster_id": ids_twitch[CANAL], "moderator_id": ids_twitch[BOT], "first": 1000, "after": cursor})
+                    d = helix("GET", "chat/chatters?" + consulta)
+                    nombres += [c["user_name"] for c in d["data"]]
+                    total, cursor = d.get("total", len(nombres)), d.get("pagination", {}).get("cursor")
+                    if not cursor:
+                        break
+                r["twitch"] = {"usuarios": sorted(nombres, key=str.lower), "total": total}
+        except (OSError, KeyError, ValueError) as e:
+            r["twitch"] = {"error": f"No pude preguntarle a Twitch: {e}"}
+    for plataforma in ("twitch", "kick"):
+        if viewers.get(plataforma) is not None:
+            desde = inicio.get(plataforma) or 0
+            vistos = dict(escribieron.get(plataforma, {}))
+            r.setdefault(plataforma, {})["escribieron"] = sorted((u for u, t in vistos.items() if u and t >= desde), key=str.lower)
+    return r
 
 
 def toca_timer(plataforma, vivo, hablar):
@@ -572,9 +616,9 @@ def sesion():
                     elif " RECONNECT" in linea[:40] or "Login authentication failed" in linea:
                         raise ConnectionError(linea[:80])
                     elif m := parsear(linea):
-                        emitir(tipo="chat", plataforma="twitch", usuario=m["nombre"], color=m["color"], texto=m["texto"], mid=m["id"], uid=m["user_id"])
+                        emitir(tipo="chat", plataforma="twitch", usuario=m["nombre"], color=m["color"], texto=m["texto"], mid=m["id"], uid=m["user_id"], emotes=m["emotes"])
                         if m["bits"]:
-                            emitir(tipo="bits", plataforma="twitch", usuario=m["nombre"], cantidad=m["bits"], mensaje=m["texto"])
+                            emitir(tipo="bits", plataforma="twitch", usuario=m["nombre"], cantidad=m["bits"], mensaje=m["texto"], emotes=m["emotes"])
                         if d := decidir(m, time.monotonic(), usos):
                             if d[0] == "responder":
                                 hablar(d[1])
@@ -688,7 +732,8 @@ def reintentar(hacer, plataforma):
 
 def publicar_estado():
     try:
-        guardar_json(ESTADO, {"actualizado": time.time(), "twitch": twitch["estado"], "kick": kick["estado"], "follows": follows["estado"], "viewers": viewers})
+        guardar_json(ESTADO, {"actualizado": time.time(), "twitch": twitch["estado"], "kick": kick["estado"], "follows": follows["estado"], "viewers": viewers,
+                                "ids": {"twitch": ids_twitch.get(CANAL), "kick": CONFIG.get("kick_broadcaster_id")}})  # para los emotes de BTTV, FFZ y 7TV
     except OSError:  # el panel justo lo está leyendo: sale en la próxima vuelta
         pass
 

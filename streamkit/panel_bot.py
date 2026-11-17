@@ -146,7 +146,7 @@ def estado():
     vivo = ahora - bot.get('actualizado', 0) < SIN_SENAL
     return {
         'bot': {'vivo': vivo, 'twitch': bot.get('twitch', ''), 'kick': bot.get('kick', ''), 'follows': bot.get('follows', ''), 'aviso': ultimo_aviso(),
-                'viewers': bot.get('viewers', {}) if vivo else {},
+                'viewers': bot.get('viewers', {}) if vivo else {}, 'ids': bot.get('ids', {}),
                 **servicios.get('bot', {'reinicios': 0, 'ultimo_fallo': ''})},
         'delay': servicios.get('delay', {'reinicios': 0, 'ultimo_fallo': ''}),
         'guardian': ahora - servicios.get('actualizado', 0) < SIN_SENAL,
@@ -180,6 +180,20 @@ def accion(datos):
         orden['uid'] = str(datos['uid'])
     if orden['accion'] == 'timeout':
         orden['minutos'] = entero(datos.get('minutos'), 1, 10080, 'Minutos del timeout')  # el máximo de Kick: una semana
+    error = al_bot(orden)['error']
+    if error:
+        raise ValueError(error)
+
+
+def quienes():
+    """Quién está en el chat de Twitch y quién escribió en este stream, por plataforma."""
+    r = al_bot({'accion': 'quienes'})
+    if r.get('error') or 'quienes' not in r:
+        raise ValueError(r.get('error') or 'El bot no sabe responder esto: reinicialo.')
+    return r['quienes']
+
+
+def al_bot(orden):
     try:
         with socket.create_connection(('127.0.0.1', PUERTO_ORDENES), 2) as s:
             s.settimeout(40)  # el bot puede reintentar con la sesión refrescada: hasta 30 s
@@ -190,11 +204,9 @@ def accion(datos):
                 if not parte:
                     break
                 respuesta += parte
-        error = json.loads(respuesta)['error']
-    except (OSError, ValueError, KeyError):
+        return json.loads(respuesta)
+    except (OSError, ValueError):
         raise ValueError('El bot no contestó. Fijate en Inicio si está corriendo.')
-    if error:
-        raise ValueError(error)
 
 
 def leer():

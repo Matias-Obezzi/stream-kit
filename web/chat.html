@@ -5,21 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chat · Stream Kit</title>
 <link rel="stylesheet" href="/estilo.css">
+<script src="/emotes.js"></script>
 </head>
 <body class="pagina-chat">
 <header>
   <a class="volver" href="/">← Inicio</a>
   <h1>Chat</h1>
   <span class="pill" id="estado">Conectando…</span>
-  <span class="pill" id="viewers" title="Espectadores ahora. Se actualiza cada 30 segundos" hidden></span>
+  <button type="button" class="pill" id="viewers" title="Espectadores ahora, se actualiza cada 30 segundos. Tocá para ver quiénes" aria-expanded="false" aria-controls="quienes" hidden></button>
 </header>
 <main>
   <details class="card ayuda">
     <summary>Cómo se usa</summary>
     <ol>
-      <li>Los chats de Twitch y Kick llegan juntos, con los follows, subs, raids y bits marcados.</li>
+      <li>Los chats de Twitch y Kick llegan juntos, con los follows, subs, raids y bits marcados. Los emotes se ven como
+        imagen: los de Twitch y Kick, y los de BTTV, FFZ y 7TV, los globales y los que sumes a tu canal.</li>
       <li>En OBS: Ver → Paneles → Paneles de navegador personalizados, y agregá <code>http://127.0.0.1:8080/chat</code>.
         Queda como un panel más.</li>
+      <li>Tocá el contador de espectadores para ver quiénes están: en Twitch, los que están en el chat con su cuenta (los
+        anónimos no salen). Kick no lo dice; de las dos se ve quién escribió desde que arrancó el stream.</li>
       <li>La campanita suena con cada mensaje; abajo elegís cuándo sí y cuándo no.</li>
       <li>Click derecho en un mensaje: copiarlo, silenciar a esa persona, borrarlo, timeout, ban y desban. Moderar lo hace el
         bot, así que tiene que ser moderador.</li>
@@ -38,6 +42,7 @@
     <p class="hint">Separá con comas. Mira el nombre y el mensaje, sin importar mayúsculas ni tildes. Si un mensaje
       cumple los dos, no suena.</p>
   </details>
+  <section class="card quienes" id="quienes" aria-live="polite" hidden></section>
   <p class="aviso" id="tocar" hidden>Tocá la página una vez para que el navegador deje sonar la campanita.</p>
   <p class="aviso" id="aviso" role="status" hidden></p>
   <ol class="chat card" id="chat" role="log" tabindex="0" aria-label="Mensajes de Twitch y Kick. Click derecho en un mensaje para moderar"></ol>
@@ -140,12 +145,16 @@ function agregar(e) {
   if (e.tipo === 'chat') {
     const quien = span('quien', e.usuario);
     if (/^#[0-9a-f]{6}$/i.test(e.color || '')) quien.style.color = e.color;
-    li.append(quien, span('texto', textoVisible(e)));
+    const texto = span('texto', '');
+    texto.append(Emotes.pintar(e.texto, e.plataforma, e.emotes));
+    li.append(quien, texto);
     mensajes.set(li, e);
   } else {
     if (e.tipo === 'moderado' && e.accion !== 'desbanear') tachar(e);
     const [titulo, detalle] = (EVENTOS[e.tipo] || (() => [e.tipo, '']))(e);
-    li.append(span('titulo', titulo), span('quien', e.usuario), span('texto', [detalle, e.mensaje].filter(Boolean).join(' · ')));
+    const texto = span('texto', detalle && e.mensaje ? detalle + ' · ' : detalle);
+    if (e.mensaje) texto.append(Emotes.pintar(e.mensaje, e.plataforma, e.emotes));
+    li.append(span('titulo', titulo), span('quien', e.usuario), texto);
   }
   li.title = e.plataforma === 'kick' ? 'Kick' : 'Twitch';
   const abajo = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80;
@@ -284,7 +293,55 @@ async function estado() {
   setTimeout(estado, 5000);
 }
 
-guardar(); audio(); traer(); estado();
+// quién mira: Twitch da la lista del chat (los que están logueados, no los anónimos); Kick no da ninguna
+const nombres = lista => lista.length ? lista.join(', ') : 'nadie todavía';
+async function quienes() {
+  const caja = $('quienes');
+  caja.replaceChildren('Buscando…');
+  let datos;
+  try {
+    const r = await fetch('/api/chat/quienes');
+    datos = await r.json();
+    if (!r.ok) throw new Error(datos.error);
+  } catch (e) {
+    caja.textContent = e.message || 'No pude preguntar.';
+    return;
+  }
+  const partes = [];
+  for (const [clave, nombre] of [['twitch', 'Twitch'], ['kick', 'Kick']]) {
+    const p = datos[clave];
+    if (!p) continue;
+    const h = document.createElement('h2');
+    const texto = document.createElement('p');
+    if (p.error) texto.textContent = p.error;
+    else if (p.usuarios) {
+      h.textContent = `${nombre} · ${p.total} en el chat`;
+      texto.textContent = nombres(p.usuarios);
+    } else texto.textContent = 'Kick no dice quién mira.';
+    h.textContent ||= nombre;
+    const escribieron = document.createElement('p');
+    escribieron.className = 'hint';
+    escribieron.textContent = 'Escribieron en este stream: ' + nombres(p.escribieron || []);
+    partes.push(h, texto, escribieron);
+  }
+  caja.replaceChildren(...(partes.length ? partes : ['Sin stream en vivo.']));
+}
+$('viewers').onclick = () => {
+  const abrir = $('quienes').hidden;
+  $('quienes').hidden = !abrir;
+  $('viewers').setAttribute('aria-expanded', abrir);
+  if (abrir) quienes();
+};
+
+guardar(); audio(); estado();
+traer();
+// los emotes de BTTV, FFZ y 7TV pueden tardar unos segundos: cuando llegan, el chat que ya estaba se vuelve a dibujar
+Emotes.cargar('').then(() => {
+  for (const li of chat.querySelectorAll('.linea')) {
+    const e = mensajes.get(li);
+    if (e) li.querySelector('.texto').replaceChildren(Emotes.pintar(e.texto, e.plataforma, e.emotes));
+  }
+});
 </script>
 </body>
 </html>

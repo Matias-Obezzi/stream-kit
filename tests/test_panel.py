@@ -111,7 +111,8 @@ def atender():
             return
         with c:
             recibidas.append(json.loads(c.recv(4096)))
-            c.sendall((json.dumps({'error': contestar.pop(0)}) + '\n').encode())
+            x = contestar.pop(0)
+            c.sendall((json.dumps(x if isinstance(x, dict) else {'error': x}) + '\n').encode())
 threading.Thread(target=atender, daemon=True).start()
 contestar[:] = ['', 'Twitch respondió 400: ya está baneado']
 p.accion({'accion': 'timeout', 'plataforma': 'kick', 'uid': 77, 'minutos': 10, 'usuario': 'Ana', 'otra': 'cosa'})
@@ -121,6 +122,13 @@ try:
     raise AssertionError('tenía que fallar')
 except ValueError as e:
     assert str(e) == 'Twitch respondió 400: ya está baneado'
+contestar[:] = [{'error': '', 'quienes': {'kick': {'escribieron': ['ana']}}}, {'error': ''}]
+assert p.quienes() == {'kick': {'escribieron': ['ana']}} and recibidas[-1] == {'accion': 'quienes'}
+try:
+    p.quienes()  # un bot de antes no conoce el pedido
+    raise AssertionError('tenía que fallar')
+except ValueError as e:
+    assert 'reinicialo' in str(e)
 def rechaza(**k):
     try:
         p.accion(k)
@@ -134,7 +142,7 @@ assert 'id' in rechaza(accion='banear', plataforma='twitch', uid='1; 2')
 assert 'id' in rechaza(accion='banear', plataforma='kick')
 assert 'Minutos' in rechaza(accion='timeout', plataforma='kick', uid='1', minutos=0)
 assert 'Minutos' in rechaza(accion='timeout', plataforma='kick', uid='1', minutos=10081)
-assert len(recibidas) == 2, 'lo rechazado no llega al bot'
+assert len(recibidas) == 4, 'lo rechazado no llega al bot'
 falso_bot.close()
 p.PUERTO_ORDENES = socket.create_server(('127.0.0.1', 0)).getsockname()[1]  # nadie atiende
 assert 'no contestó' in rechaza(accion='banear', plataforma='kick', uid='1')

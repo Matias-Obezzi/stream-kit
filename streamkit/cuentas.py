@@ -19,7 +19,7 @@ from canal import guardar_json, pedir
 from rutas import BOT, config as ruta_config
 
 CONFIG = ruta_config(os.path.join('bot', 'config.json'))
-ALCANCES = 'chat:read chat:edit moderator:manage:banned_users moderator:manage:chat_messages moderator:read:followers clips:edit'
+ALCANCES = 'chat:read chat:edit moderator:manage:banned_users moderator:manage:chat_messages moderator:read:followers clips:edit moderator:read:chatters'
 ALCANCES_CANAL = 'channel:manage:broadcast'  # tu cuenta, no la del bot: un moderador no puede cambiar el título por API
 KICK_ALCANCES = 'user:read chat:write moderation:ban moderation:chat_message:manage'
 KICK_ALCANCES_CANAL = 'user:read channel:read channel:write'

@@ -19,6 +19,7 @@ def que(texto, usos=None, ahora=1000.0, **k):
 
 m = b.parsear(linea("hola: qué tal", badges="subscriber/3", primero=1))
 assert (m["usuario"], m["texto"], m["id"], m["user_id"], m["primero"], m["inmune"]) == ("alguien", "hola: qué tal", "abc-123", "42", True, True)
+assert b.parsear(linea("Kappa hola").replace("color=", "emotes=25:0-4;color="))["emotes"] == "25:0-4"
 assert b.parsear("PING :tmi.twitch.tv") is None
 assert b.parsear(":tmi.twitch.tv 001 tubot :Welcome, GLHF!") is None
 
@@ -222,7 +223,7 @@ assert intentos == ["conectado", "reconectando"]
 def aviso(clase, extra="", texto=""):
     return f"@display-name=Pepe;login=pepe;msg-id={clase}{extra} :tmi.twitch.tv USERNOTICE #tucanal" + (f" :{texto}" if texto else "")
 assert b.parsear_aviso(aviso("sub", ";msg-param-sub-plan=Prime")) == {"tipo": "sub", "usuario": "Pepe", "nivel": "Prime"}
-assert b.parsear_aviso(aviso("resub", ";msg-param-cumulative-months=7;msg-param-sub-plan=1000", "vamos: arriba")) == {"tipo": "resub", "usuario": "Pepe", "cantidad": 7, "mensaje": "vamos: arriba"}
+assert b.parsear_aviso(aviso("resub", ";msg-param-cumulative-months=7;msg-param-sub-plan=1000", "vamos: arriba")) == {"tipo": "resub", "usuario": "Pepe", "cantidad": 7, "mensaje": "vamos: arriba", "emotes": ""}
 assert b.parsear_aviso(aviso("submysterygift", ";msg-param-mass-gift-count=5")) == {"tipo": "regalo", "usuario": "Pepe", "cantidad": 5}
 assert b.parsear_aviso(aviso("subgift", ";msg-param-community-gift-id=123")) is None, "ya salió en el submysterygift"
 assert b.parsear_aviso(aviso("subgift", ";msg-param-recipient-display-name=Ana"))["cantidad"] == 1
@@ -341,6 +342,26 @@ b.helix = lambda *a, **k: (_ for _ in ()).throw(ConnectionError("sin internet"))
 assert b.ordenar({"accion": "banear", "plataforma": "twitch", "uid": "42"}).startswith("No pude hablar con Twitch")
 assert len(b.eventos["lista"]) == antes + 7, "lo que falló no sale como hecho"
 b.helix, b.kick_api = reales_ord
+
+# quién mira: Twitch da la lista del chat; en las dos, quién escribió desde que arrancó el stream
+reales_q = b.helix, b.alcances
+b.ids_twitch.update(tucanal="1", tubot="2")
+b.viewers.update(twitch=3, kick=None)
+b.inicio["twitch"] = b.fecha("2026-11-15T01:00:00Z")
+assert b.inicio["twitch"] == 1794704400.0 and b.fecha(None) == 0
+b.escribieron.clear()
+b.escribieron["twitch"] = {"viejo": b.inicio["twitch"] - 5, "Zoe": b.inicio["twitch"] + 5, "ana": b.inicio["twitch"] + 9}
+paginas = [{"data": [{"user_name": "Zoe"}], "total": 2, "pagination": {"cursor": "c1"}}, {"data": [{"user_name": "ana"}], "total": 2, "pagination": {}}]
+pedidos = []
+b.helix = lambda metodo, ruta, *a: (pedidos.append(ruta), paginas.pop(0))[1]
+b.alcances = lambda: b.ALCANCES.split()
+q = b.quienes()
+assert q == {"twitch": {"usuarios": ["ana", "Zoe"], "total": 2, "escribieron": ["ana", "Zoe"]}}, q
+assert "moderator_id=2" in pedidos[0] and "after=c1" in pedidos[1]
+b.alcances = lambda: ["chat:read"]
+b.viewers["kick"] = 5
+assert "Configuración" in b.quienes()["twitch"]["error"] and b.quienes()["kick"] == {"escribieron": []}
+b.helix, b.alcances = reales_q
 
 textos = [t["texto"] for t in b.CONFIG["timers"]] + [c["respuesta"] for c in b.CONFIG["comandos"].values()] + [ayuda]
 for t in textos:

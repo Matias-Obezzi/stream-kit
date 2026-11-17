@@ -149,3 +149,9 @@ code { font: 13px ui-monospace, Consolas, monospace; background: var(--bg); bord
 .cambiar-clave { flex-basis: 100%; }
 .titulo-fila { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .titulo-fila h2 { margin: 0; }
+button.pill { background: var(--line); color: var(--text); border-radius: 999px; padding: 6px 14px; font-weight: 700; }
+button.pill:hover { outline: 1px solid var(--muted); }
+.quienes { max-height: 40vh; overflow-y: auto; }
+.quienes h2 { font-size: 15px; margin: 8px 0 4px; }
+.quienes p { margin: 0 0 6px; overflow-wrap: anywhere; }
+.emote { height: 1.75em; vertical-align: middle; margin: -0.25em 0; }

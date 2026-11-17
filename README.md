@@ -8,7 +8,7 @@ Herramientas para streamear en **Twitch y Kick** desde Windows, todo en tu PC, s
 - **Bot de chat** en Twitch y Kick a la vez: comandos, mensajes automáticos, ban a los bots que venden viewers y
   `!clip`.
 - **Chat unificado** de las dos plataformas, con follows, subs, raids y bits, campanita con filtros y moderación con
-  click derecho. Sirve como panel de OBS.
+  click derecho. Muestra los emotes de Twitch, Kick, BTTV, FFZ y 7TV (los globales y los de tu canal). Muestra cuántos miran y, al tocarlo, quiénes están en el chat. Sirve como panel de OBS.
 - **Título, categoría y etiquetas** cambiados de una vez en Twitch y Kick.
 - **Consumo**: cuánta CPU, memoria y red usa cada parte (el delay, el bot, cada envío a una plataforma).
 - **Se configura solo**: un botón deja OBS listo, otros suman el panel y el chat adentro de OBS, y otro instala la tecla
