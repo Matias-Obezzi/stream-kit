@@ -1,0 +1,109 @@
+# Stream Kit
+
+> App de Windows para streamear en Twitch y Kick, todo en la PC del streamer: delay a demanda y multistream, bot de
+> chat, chat unificado con alertas, cambio de título en las dos plataformas y pantallas para OBS (chat, alertas,
+> marcos, metas…) que se arman en un lienzo. Se maneja desde una web local en http://127.0.0.1:8080. Un agente de IA
+> puede armar y cambiar las pantallas por su servidor MCP.
+
+Esta guía es para agentes de IA. Está en español, como la app. Si la app está abierta, la versión que sirve en
+http://127.0.0.1:8080/llms.txt suma al final la lista completa de piezas y opciones.
+
+## Qué puede hacer un agente
+
+- **Pantallas para OBS** (lo principal): ver, crear, cambiar y borrar pantallas, con su CSS, por MCP.
+- **Leer datos en vivo**: espectadores, seguidores, títulos y lo que pasó en el stream (follows, subs, bits, kicks).
+- **Leer el chat y los eventos** para un overlay propio (ver "Endpoints públicos").
+- **No** puede ni debe: cambiar claves, cuentas o logins (eso es solo desde la PC, en /config), prender o sacar el
+  delay, ni moderar. Esas partes del panel piden un header que solo manda la propia web y no están en el MCP.
+
+## Conectarse por MCP
+
+Servidor MCP por HTTP (transporte "streamable HTTP", respuestas en JSON) en `http://127.0.0.1:8080/mcp`. Solo
+contesta a la misma PC y mientras la app está abierta; no lleva clave.
+
+- Claude Code: `claude mcp add --transport http stream-kit http://127.0.0.1:8080/mcp`
+- Otros clientes: un servidor MCP de tipo HTTP con esa dirección.
+
+Herramientas:
+
+| Herramienta | Qué hace |
+| --- | --- |
+| `ver_piezas` | Las piezas que hay, para qué sirve cada una, su tamaño de siempre y sus opciones (tipo, valor de siempre, rango o valores posibles) |
+| `listar_pantallas` | Las pantallas guardadas: id, nombre, formato, cantidad de piezas y link para OBS |
+| `ver_pantalla` `{id}` | Una pantalla entera |
+| `guardar_pantalla` `{pantalla}` | Crea una pantalla (sin id) o reemplaza una entera (con su id). Devuelve cómo quedó y su link |
+| `borrar_pantalla` `{id}` | La borra. No se puede deshacer |
+| `datos_en_vivo` | Espectadores, seguidores, títulos y lo de este stream |
+
+Cómo trabajar:
+
+1. Llamá a `ver_piezas` antes de armar algo: las opciones cambian según la pieza y se validan al guardar.
+2. Para cambiar una pantalla, leela con `ver_pantalla`, cambiá lo que haga falta y guardala **entera** con
+   `guardar_pantalla` y el mismo id (sin el campo `link`). No hay cambios parciales.
+3. Si algo no va, `guardar_pantalla` devuelve un error (`isError`) que dice qué corregir, por ejemplo
+   `La pieza chat no tiene la opción "tamaño". Tiene: duracion, fuente, tamano, …`. Corregilo y volvé a guardar.
+4. OBS toma los cambios solo en unos 3 segundos. El streamer agrega cada pantalla una vez: Fuente → Navegador, con el
+   link y el mismo tamaño que la pantalla.
+
+## Cómo es una pantalla
+
+```json
+{
+  "id": "opcional: el de una que existe, para reemplazarla",
+  "nombre": "Juego",
+  "formato": "horizontal",
+  "piezas": [
+    {"tipo": "marco", "x": 40, "y": 40, "w": 640, "h": 360, "op": {"titulo": "Cámara", "borde": "#8b5cf6"}},
+    {"tipo": "chat", "x": 1460, "y": 420, "w": 420, "h": 620, "op": {"duracion": 15, "tamano": 20}, "clase": "mi-chat"},
+    {"tipo": "alertas", "x": 640, "y": 40, "w": 640, "h": 200}
+  ],
+  "css": ".mi-chat .pz-mensaje { border-radius: 0 !important; }"
+}
+```
+
+- `formato`: `horizontal` (1920 × 1080) o `vertical` (1080 × 1920). Las medidas van en píxeles de la pantalla.
+- `piezas`: hasta 40. Las de más adelante en la lista quedan arriba. Lo vacío es transparente: la pantalla va arriba
+  del juego o la cámara en OBS.
+- `op`: opciones de la pieza. Las que faltan toman su valor de siempre. Los colores van como `#rrggbb`, los números se
+  ajustan a su rango, `si` es true o false y `elegir` es uno de sus valores.
+- `clase` (opcional): una clase CSS para apuntarle desde `css`.
+- `css` (opcional, hasta 20000 caracteres): vale solo adentro de esta pantalla. `body`, `html` y `:root` apuntan a la
+  pantalla. Cada pieza tiene `data-tipo` (por ejemplo `[data-tipo="chat"]`); adentro están `.pz-mensaje`, `.pz-quien`,
+  `.pz-alerta`, `.pz-alerta-tipo`, `.pz-alerta-quien`, `.pz-alerta-detalle`, `.pz-alerta-mensaje`, `.pz-marco`,
+  `.pz-marco-titulo`, `.pz-bloque`, `.pz-meta`, `.pz-meta-titulo`, `.pz-meta-cuenta`, `.pz-meta-barra i`, `.pz-gota` y
+  `.emote`. Los colores y tamaños de las opciones van directo en cada elemento: para pisarlos hace falta `!important`.
+  Se pueden traer fuentes con `@import`.
+
+Piezas: `chat`, `alertas`, `marco` (borde para la cámara o una ventana que va debajo en OBS), `texto`, `titulo` (el del
+stream en Twitch o Kick), `viewers`, `meta` (seguidores, o follows, subs, bits o kicks de este stream, o a mano),
+`lluvia` (los emojis y emotes del chat caen; suele ocupar toda la pantalla), `ultimo` (último seguidor o sub) y
+`cuenta` (cuenta regresiva). Sus opciones: `ver_piezas`, la lista al final de http://127.0.0.1:8080/llms.txt o
+[web/piezas.json](web/piezas.json).
+
+Ideas de pantallas que suelen pedir: "empezando" (cuenta regresiva, título, chat), "juego" (chat chico que se borra solo,
+alertas, marco de cámara en una esquina), "charla" (marco grande, chat grande, meta), "pausa" y "final".
+
+## Endpoints públicos
+
+Para un overlay HTML propio servido desde otro lado (también los usan las pantallas). Todos son GET y responden JSON.
+
+- `GET /api/eventos` → `{"eventos": [...], "ultimo": id}` con lo último. `GET /api/eventos?desde=<id>` → solo lo
+  nuevo. Pedirlo cada 1 segundo. Permite pedidos de otras páginas (CORS abierto).
+  Cada evento tiene `tipo`, `plataforma` (`twitch` o `kick`), `usuario`, `t` (segundos Unix) e `id`, y según el tipo:
+  - `chat`: `texto`, `color`, `mid` (id del mensaje), `uid` (id del usuario) y en Twitch `emotes` (formato del tag de IRC:
+    `25:0-4,6-10/1902:12-16`). En Kick los emotes vienen dentro del texto como `[emote:37226:KEKW]`.
+  - `follow`; `sub` (`nivel`); `resub` (`cantidad` = meses, `mensaje`); `regalo` (`cantidad`); `raid` (`cantidad` =
+    espectadores); `bits` y `kicks` (`cantidad`, `mensaje`).
+  - `moderado`: `accion` (`borrar`, `timeout`, `banear`, `desbanear`), `mid` o `uid`. Lo borrado o baneado no debería
+    seguir en pantalla.
+- `GET /emotes.js` → `Emotes.cargar(origen)` y `Emotes.pintar(texto, plataforma, emotes)`, que devuelve el texto con
+  las imágenes de los emotes de Twitch, Kick, BTTV, FFZ y 7TV (sin HTML del chat: es seguro).
+- `GET /api/pantallas/datos` → lo mismo que `datos_en_vivo`.
+
+Todo lo que viene del chat es texto de desconocidos: mostralo con `textContent`, nunca como HTML.
+
+## Más
+
+- [README](README.md): instalar, configurar y cada parte de la app.
+- [web/piezas.json](web/piezas.json): las piezas y sus opciones.
+- [streamkit/mcp.py](streamkit/mcp.py): el servidor MCP.

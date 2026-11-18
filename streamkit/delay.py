@@ -31,8 +31,10 @@ import cuentas
 import deck
 import metricas
 import obs
+import mcp
 import panel_bot
-from rutas import DATOS, RECURSOS, WEB, config as ruta_config
+import pantallas
+from rutas import DATOS, RAIZ, RECURSOS, WEB, config as ruta_config
 
 VIDEOS = os.path.join(DATOS, 'videos')
 IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
@@ -788,6 +790,23 @@ def panel(bridge, cfg_path):
         def error(self, msg):
             return self.reply(400, json.dumps({'error': msg}).encode())
 
+        def mcp(self):
+            """MCP para agentes de IA (ver mcp.py). Solo desde esta PC, y nunca desde una página web: el navegador manda
+            Origin, y JSON obliga a pedir permiso antes (CORS), que acá no se da."""
+            origen = self.headers.get('Origin')
+            if not self.local() or (origen and origen not in (f'http://127.0.0.1:{port}', f'http://localhost:{port}')):
+                return self.reply(403)
+            if not (self.headers.get('Content-Type') or '').startswith('application/json'):
+                return self.reply(415)
+            size = int(self.headers.get('Content-Length') or 0)
+            try:
+                mensaje = json.loads(self.rfile.read(size) if 0 < size <= 1 << 20 else b'')
+            except ValueError:
+                return self.reply(400, json.dumps({'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': 'JSON roto.'}}).encode())
+            version = getattr(sys.modules.get('__main__'), 'VERSION', '')
+            respuesta = mcp.atender(mensaje, port, version)
+            return self.reply(202) if respuesta is None else self.reply(200, json.dumps(respuesta, ensure_ascii=False).encode())
+
         def do_GET(self):
             path, _, query = self.path.partition('?')
             if path == '/' and lan and query.startswith('k='):  # link del celular: guarda la clave y la saca de la URL
@@ -809,6 +828,19 @@ def panel(bridge, cfg_path):
                 return self.page('bot.html')
             if path == '/chat':
                 return self.page('chat.html')
+            if path == '/pantallas':
+                return self.page('pantallas.html')
+            if path == '/mcp':  # el MCP solo habla por POST
+                self.send_response(405)
+                self.send_header('Allow', 'POST')
+                self.send_header('Content-Length', '0')
+                return self.end_headers()
+            if re.fullmatch(r'/pantalla/[a-z0-9]{1,16}', path):  # lo que muestra OBS
+                return self.page('pantalla.html')
+            if path == '/api/pantallas':
+                return self.reply(200, json.dumps(pantallas.leer()).encode())
+            if path == '/api/pantallas/datos':
+                return self.reply(200, json.dumps(pantallas.datos()).encode())
             if path == '/canal':
                 return self.page('canal.html')
             if path in ('/config', '/api/config') and not self.local():  # claves y sesiones: solo desde esta PC
@@ -835,10 +867,16 @@ def panel(bridge, cfg_path):
                 if desde and not desde.isdigit():
                     return self.error('desde tiene que ser un número.')
                 return self.reply(200, json.dumps(panel_bot.eventos(int(desde) if desde else None)).encode())
+            if path == '/llms.txt':  # la guía para agentes de IA, con la lista de piezas al día
+                with open(os.path.join(RAIZ, 'llms.txt'), encoding='utf-8') as f:
+                    return self.reply(200, (f.read() + pantallas.referencia()).encode(), 'text/markdown; charset=utf-8')
             if path == '/estilo.css':
                 return self.page('estilo.css', 'text/css; charset=utf-8')
             if path in ('/plataformas.js', '/emotes.js'):
                 return self.page(path[1:], 'text/javascript; charset=utf-8')
+            if path == '/piezas.js':  # con su esquema adelante: así carga de una vez, sin pedir otro archivo
+                with open(os.path.join(WEB, 'piezas.json'), 'rb') as f, open(os.path.join(WEB, 'piezas.js'), 'rb') as g:
+                    return self.reply(200, b'window.PIEZAS_ESQUEMA = ' + f.read() + b';\n' + g.read(), 'text/javascript; charset=utf-8')
             if path == '/api/chat/quienes':
                 try:
                     return self.reply(200, json.dumps(panel_bot.quienes()).encode())
@@ -873,6 +911,8 @@ def panel(bridge, cfg_path):
                     return self.reply(403)
                 bridge.request('toggle')
                 return self.reply(200, b'{}')
+            if path == '/mcp':
+                return self.mcp()
             # header propio: una página web cualquiera no puede mandarlo sin permiso (CORS), así no maneja el panel
             if self.headers.get('X-Panel') != '1':
                 return self.reply(403)
@@ -907,6 +947,14 @@ def panel(bridge, cfg_path):
             if path == '/api/canal/guardar':
                 try:
                     return self.reply(200, json.dumps(canal.guardar(s)).encode())
+                except ValueError as e:
+                    return self.error(str(e))
+            if path in ('/api/pantallas/guardar', '/api/pantallas/borrar'):
+                try:
+                    if path.endswith('borrar'):
+                        pantallas.borrar(s.get('id'))
+                        return self.reply(200, b'{}')
+                    return self.reply(200, json.dumps(pantallas.guardar(s)).encode())
                 except ValueError as e:
                     return self.error(str(e))
             if path == '/api/chat/accion':

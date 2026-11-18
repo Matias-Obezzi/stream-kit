@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pantalla · Stream Kit</title>
+<!-- Lo que muestra OBS: una fuente de navegador con este link y el tamaño de la pantalla (1920×1080 o 1080×1920).
+     Si cambiás la pantalla en /pantallas y guardás, se actualiza sola. -->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  #lienzo { position: relative; overflow: hidden; }
+</style>
+<script src="/emotes.js"></script>
+<script src="/piezas.js"></script>
+</head>
+<body>
+<div id="lienzo"></div>
+<script>
+const lienzo = document.getElementById('lienzo');
+const id = location.pathname.split('/').pop();
+let version = null, vivas = [], historia = null, desde = null, datos = null;
+const cada = (nombre, ...args) => vivas.forEach(v => { try { v[nombre] && v[nombre](...args); } catch (e) { console.error(e); } });
+
+async function armar() {
+  try {
+    const p = (await (await fetch('/api/pantallas', { cache: 'no-store' })).json()).find(x => x.id === id);
+    const v = p ? p.actualizado : 'no existe';
+    if (v !== version) {
+      version = v;
+      cada('quitar');
+      lienzo.replaceChildren();
+      vivas = [];
+      Piezas.ponerCss(p && p.css, '#lienzo');
+      if (p) {
+        const [ancho, alto] = Piezas.FORMATOS[p.formato] || Piezas.FORMATOS.horizontal;
+        lienzo.style.width = ancho + 'px';
+        lienzo.style.height = alto + 'px';
+        vivas = p.piezas.map(pz => Piezas.montar(lienzo, pz, {}));
+        if (datos) cada('datos', datos);
+        (historia || []).forEach(e => cada('evento', e, true));
+      }
+    }
+  } catch { /* la app está reiniciando: sigue probando */ }
+  setTimeout(armar, 3000);
+}
+
+async function traer() {
+  try {
+    const d = await (await fetch('/api/eventos' + (desde === null ? '' : '?desde=' + desde), { cache: 'no-store' })).json();
+    if (historia === null) {  // al abrir: lo de antes solo sirve de historia (el chat que ya estaba, el último seguidor)
+      historia = d.eventos;
+      historia.forEach(e => cada('evento', e, true));
+    } else {
+      d.eventos.forEach(e => { historia.push(e); cada('evento', e, false); });
+      historia.splice(0, historia.length - 200);
+    }
+    desde = d.ultimo;
+  } catch {}
+  setTimeout(traer, 1000);
+}
+
+async function vivo() {
+  try {
+    datos = await (await fetch('/api/pantallas/datos', { cache: 'no-store' })).json();
+    cada('datos', datos);
+  } catch {}
+  setTimeout(vivo, 15000);
+}
+
+armar().then(() => { traer(); vivo(); });
+Emotes.cargar('').then(() => cada('emotes'));
+</script>
+</body>
+</html>

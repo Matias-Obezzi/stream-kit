@@ -85,6 +85,9 @@ def emitir(**evento):
         evento.update(id=max(eventos["ultimo"] + 1, time.time_ns() // 1000), t=round(time.time(), 1))
         if evento.get("tipo") == "chat":
             escribieron.setdefault(evento.get("plataforma"), {})[evento.get("usuario")] = evento["t"]
+        if evento.get("tipo") in APOYOS:
+            apoyos.append({k: evento.get(k) for k in ("t", "tipo", "plataforma", "usuario", "cantidad")})
+            eventos["apoyos_sucios"] = True
         eventos["ultimo"] = evento["id"]
         eventos["lista"].append(evento)
         eventos["sucio"] = True
@@ -92,16 +95,34 @@ def emitir(**evento):
 
 def publicar_eventos():
     with eventos["candado"]:
-        if not eventos["sucio"]:
-            return
-        datos, eventos["sucio"] = list(eventos["lista"]), False
-    try:
-        guardar_json(EVENTOS, datos)
-    except OSError:  # la web justo lo está leyendo: sale en la próxima vuelta
-        eventos["sucio"] = True
+        sucio, apoyos_sucios = eventos["sucio"], eventos.get("apoyos_sucios")
+        datos = list(eventos["lista"]) if sucio else None
+        lista_apoyos = list(apoyos) if apoyos_sucios else None
+        eventos["sucio"] = eventos["apoyos_sucios"] = False
+    if sucio:
+        try:
+            guardar_json(EVENTOS, datos)
+        except OSError:  # la web justo lo está leyendo: sale en la próxima vuelta
+            eventos["sucio"] = True
+    if apoyos_sucios:
+        try:
+            guardar_json(APOYOS_ARCHIVO, lista_apoyos)
+        except OSError:
+            eventos["apoyos_sucios"] = True
+
+
+APOYOS = ("follow", "sub", "resub", "regalo", "bits", "kicks")
+APOYOS_ARCHIVO = os.path.join(AQUI, "apoyos.json")  # follows, subs, bits y kicks con su hora: las metas de las pantallas cuentan los del stream
+MAX_APOYOS = 5000
+apoyos = collections.deque(maxlen=MAX_APOYOS)
 
 
 def cargar_eventos():
+    try:
+        with open(APOYOS_ARCHIVO, encoding="utf-8") as f:
+            apoyos.extend(a for a in json.load(f) if isinstance(a, dict))
+    except (OSError, ValueError, TypeError):  # sin historial, las metas arrancan de cero
+        pass
     try:
         with open(EVENTOS, encoding="utf-8") as f:
             viejos = json.load(f)
@@ -528,8 +549,28 @@ def fecha(texto):
         return 0
 
 
+seguidores_total = {}  # cuántos te siguen en cada plataforma, para las metas de las pantallas
+
+
+def contar_seguidores():
+    try:
+        seguidores_total["twitch"] = helix("GET", f"channels/followers?broadcaster_id={ids_twitch[CANAL]}&first=1")["total"]
+    except (OSError, KeyError, ValueError):
+        pass
+    if KICK_CANAL:
+        try:  # la API oficial de Kick no da los seguidores: la pública de la web sí
+            d = pedir("https://kick.com/api/v2/channels/" + urllib.parse.quote(KICK_CANAL), cabeceras={"Accept": "application/json"})
+            seguidores_total["kick"] = int(d["followers_count"])
+        except (OSError, KeyError, ValueError, TypeError):
+            pass
+
+
 def contar_viewers():
+    vuelta = 0
     while True:
+        if vuelta % 4 == 0 or "twitch" not in seguidores_total:  # cambian despacio: cada 2 minutos, o hasta tener el primero
+            contar_seguidores()
+        vuelta += 1
         for plataforma, pedir_lista in (("twitch", lambda: helix("GET", "streams?user_id=" + ids_twitch[CANAL])),
                                         ("kick", lambda: kick_api("GET", f"livestreams?broadcaster_user_id={CONFIG['kick_broadcaster_id']}"))):
             try:
@@ -732,7 +773,7 @@ def reintentar(hacer, plataforma):
 
 def publicar_estado():
     try:
-        guardar_json(ESTADO, {"actualizado": time.time(), "twitch": twitch["estado"], "kick": kick["estado"], "follows": follows["estado"], "viewers": viewers,
+        guardar_json(ESTADO, {"actualizado": time.time(), "twitch": twitch["estado"], "kick": kick["estado"], "follows": follows["estado"], "viewers": viewers, "inicio": inicio, "seguidores": seguidores_total,
                                 "ids": {"twitch": ids_twitch.get(CANAL), "kick": CONFIG.get("kick_broadcaster_id")}})  # para los emotes de BTTV, FFZ y 7TV
     except OSError:  # el panel justo lo está leyendo: sale en la próxima vuelta
         pass

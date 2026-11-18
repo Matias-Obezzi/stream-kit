@@ -15,7 +15,7 @@ from app import VERSION
 AQUI = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(AQUI, 'dist')
 # lo que va adentro del programa, con la misma forma que en el repo: las pantallas y los recursos
-DATOS = [('web', 'web'), ('recursos', 'recursos')]
+DATOS = [('web', 'web'), ('recursos', 'recursos'), ('llms.txt', '.')]
 
 
 def main():

@@ -1,0 +1,1052 @@
+{
+ "chat": {
+  "nombre": "Chat",
+  "descripcion": "Los chats de Twitch y Kick juntos, con emotes. Lo que borra o banea un mod se va.",
+  "w": 420,
+  "h": 520,
+  "opciones": [
+   {
+    "clave": "duracion",
+    "nombre": "Se borra a los (segundos, 0 = no se borra)",
+    "tipo": "numero",
+    "def": 0,
+    "min": 0,
+    "max": 3600
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 20,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "nombres",
+    "nombre": "Color de los nombres",
+    "tipo": "elegir",
+    "def": "propio",
+    "valores": [
+     [
+      "propio",
+      "El de cada persona"
+     ],
+     [
+      "fijo",
+      "Uno para todos"
+     ]
+    ]
+   },
+   {
+    "clave": "color_nombre",
+    "nombre": "Color fijo de los nombres",
+    "tipo": "color",
+    "def": "#a78bfa"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#0f1115"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 70,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "radio",
+    "nombre": "Bordes redondeados",
+    "tipo": "numero",
+    "def": 6,
+    "min": 0,
+    "max": 40
+   },
+   {
+    "clave": "plataforma",
+    "nombre": "Rayita del color de cada plataforma",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "comandos",
+    "nombre": "Ocultar comandos (!algo)",
+    "tipo": "si",
+    "def": false
+   }
+  ]
+ },
+ "alertas": {
+  "nombre": "Alertas",
+  "descripcion": "Follows, subs, regalos, raids, bits y kicks, de a una, con sonido opcional.",
+  "w": 640,
+  "h": 220,
+  "opciones": [
+   {
+    "clave": "duracion",
+    "nombre": "Duración (segundos)",
+    "tipo": "numero",
+    "def": 7,
+    "min": 2,
+    "max": 60
+   },
+   {
+    "clave": "sonido",
+    "nombre": "Con sonido",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "acento",
+    "nombre": "Color de acento",
+    "tipo": "color",
+    "def": "#8b5cf6"
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 44,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#181b22"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 95,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "follows",
+    "nombre": "Follows",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "subs",
+    "nombre": "Subs y regalos",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "apoyos",
+    "nombre": "Bits y kicks",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "raids",
+    "nombre": "Raids",
+    "tipo": "si",
+    "def": true
+   }
+  ]
+ },
+ "marco": {
+  "nombre": "Marco de ventana",
+  "descripcion": "Un borde (con título opcional) para la cámara o una ventana que en OBS va debajo de la pantalla. El centro es transparente.",
+  "w": 640,
+  "h": 360,
+  "opciones": [
+   {
+    "clave": "borde",
+    "nombre": "Color del borde",
+    "tipo": "color",
+    "def": "#8b5cf6"
+   },
+   {
+    "clave": "grosor",
+    "nombre": "Grosor del borde",
+    "tipo": "numero",
+    "def": 4,
+    "min": 0,
+    "max": 60
+   },
+   {
+    "clave": "radio",
+    "nombre": "Bordes redondeados",
+    "tipo": "numero",
+    "def": 12,
+    "min": 0,
+    "max": 200
+   },
+   {
+    "clave": "sombra",
+    "nombre": "Sombra",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "titulo",
+    "nombre": "Título (vacío: sin título)",
+    "tipo": "texto",
+    "def": ""
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 20,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#8b5cf6"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 100,
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ "texto": {
+  "nombre": "Texto",
+  "descripcion": "Un texto fijo de una línea.",
+  "w": 600,
+  "h": 90,
+  "opciones": [
+   {
+    "clave": "texto",
+    "nombre": "Texto",
+    "tipo": "texto",
+    "def": "Tu texto acá"
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 48,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#000000"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 0,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "alinear",
+    "nombre": "Alineación",
+    "tipo": "elegir",
+    "def": "izquierda",
+    "valores": [
+     [
+      "izquierda",
+      "Izquierda"
+     ],
+     [
+      "centro",
+      "Centro"
+     ],
+     [
+      "derecha",
+      "Derecha"
+     ]
+    ]
+   },
+   {
+    "clave": "negrita",
+    "nombre": "Negrita",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "mayusculas",
+    "nombre": "Mayúsculas",
+    "tipo": "si",
+    "def": false
+   }
+  ]
+ },
+ "titulo": {
+  "nombre": "Título del stream",
+  "descripcion": "El título actual del stream en Twitch o Kick.",
+  "w": 900,
+  "h": 80,
+  "opciones": [
+   {
+    "clave": "plataforma",
+    "nombre": "De",
+    "tipo": "elegir",
+    "def": "twitch",
+    "valores": [
+     [
+      "twitch",
+      "Twitch"
+     ],
+     [
+      "kick",
+      "Kick"
+     ]
+    ]
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 36,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#000000"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 0,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "alinear",
+    "nombre": "Alineación",
+    "tipo": "elegir",
+    "def": "izquierda",
+    "valores": [
+     [
+      "izquierda",
+      "Izquierda"
+     ],
+     [
+      "centro",
+      "Centro"
+     ],
+     [
+      "derecha",
+      "Derecha"
+     ]
+    ]
+   },
+   {
+    "clave": "negrita",
+    "nombre": "Negrita",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "mayusculas",
+    "nombre": "Mayúsculas",
+    "tipo": "si",
+    "def": false
+   }
+  ]
+ },
+ "viewers": {
+  "nombre": "Espectadores",
+  "descripcion": "Cuántos miran ahora, por plataforma o la suma. Sin stream no se ve.",
+  "w": 480,
+  "h": 64,
+  "opciones": [
+   {
+    "clave": "mostrar",
+    "nombre": "Mostrar",
+    "tipo": "elegir",
+    "def": "separado",
+    "valores": [
+     [
+      "separado",
+      "Twitch y Kick por separado"
+     ],
+     [
+      "suma",
+      "La suma"
+     ],
+     [
+      "twitch",
+      "Solo Twitch"
+     ],
+     [
+      "kick",
+      "Solo Kick"
+     ]
+    ]
+   },
+   {
+    "clave": "etiqueta",
+    "nombre": "Texto",
+    "tipo": "texto",
+    "def": "Viendo"
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 24,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#000000"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 60,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "alinear",
+    "nombre": "Alineación",
+    "tipo": "elegir",
+    "def": "centro",
+    "valores": [
+     [
+      "izquierda",
+      "Izquierda"
+     ],
+     [
+      "centro",
+      "Centro"
+     ],
+     [
+      "derecha",
+      "Derecha"
+     ]
+    ]
+   },
+   {
+    "clave": "negrita",
+    "nombre": "Negrita",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "mayusculas",
+    "nombre": "Mayúsculas",
+    "tipo": "si",
+    "def": false
+   }
+  ]
+ },
+ "meta": {
+  "nombre": "Meta",
+  "descripcion": "Una barra de progreso: seguidores, o follows, subs, bits o kicks de este stream, o un número a mano.",
+  "w": 560,
+  "h": 120,
+  "opciones": [
+   {
+    "clave": "fuente_meta",
+    "nombre": "Qué cuenta",
+    "tipo": "elegir",
+    "def": "seguidores",
+    "valores": [
+     [
+      "seguidores",
+      "Seguidores (Twitch + Kick)"
+     ],
+     [
+      "seguidores_twitch",
+      "Seguidores de Twitch"
+     ],
+     [
+      "seguidores_kick",
+      "Seguidores de Kick"
+     ],
+     [
+      "follows",
+      "Follows de este stream"
+     ],
+     [
+      "subs",
+      "Subs de este stream"
+     ],
+     [
+      "bits",
+      "Bits de este stream"
+     ],
+     [
+      "kicks",
+      "Kicks de este stream"
+     ],
+     [
+      "manual",
+      "A mano"
+     ]
+    ]
+   },
+   {
+    "clave": "titulo",
+    "nombre": "Título",
+    "tipo": "texto",
+    "def": "Meta de seguidores"
+   },
+   {
+    "clave": "objetivo",
+    "nombre": "Objetivo",
+    "tipo": "numero",
+    "def": 2000,
+    "min": 1,
+    "max": 100000000
+   },
+   {
+    "clave": "actual",
+    "nombre": "Cuántos van (solo a mano)",
+    "tipo": "numero",
+    "def": 0,
+    "min": 0,
+    "max": 100000000
+   },
+   {
+    "clave": "barra",
+    "nombre": "Color de la barra",
+    "tipo": "color",
+    "def": "#22c55e"
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 24,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#0f1115"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 85,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "radio",
+    "nombre": "Bordes redondeados",
+    "tipo": "numero",
+    "def": 10,
+    "min": 0,
+    "max": 60
+   }
+  ]
+ },
+ "lluvia": {
+  "nombre": "Lluvia de emojis",
+  "descripcion": "Los emojis y emotes que mandan en el chat caen por la pantalla. Suele ocupar toda la pantalla.",
+  "w": 1920,
+  "h": 1080,
+  "opciones": [
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño",
+    "tipo": "numero",
+    "def": 56,
+    "min": 16,
+    "max": 300
+   },
+   {
+    "clave": "cantidad",
+    "nombre": "Máximo por mensaje",
+    "tipo": "numero",
+    "def": 6,
+    "min": 1,
+    "max": 30
+   },
+   {
+    "clave": "duracion",
+    "nombre": "Tarda en caer (segundos)",
+    "tipo": "numero",
+    "def": 4,
+    "min": 1,
+    "max": 20
+   },
+   {
+    "clave": "emojis",
+    "nombre": "Emojis",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "emotes",
+    "nombre": "Emotes (Twitch, Kick, BTTV, FFZ y 7TV)",
+    "tipo": "si",
+    "def": true
+   }
+  ]
+ },
+ "ultimo": {
+  "nombre": "Último seguidor o sub",
+  "descripcion": "El nombre del último que siguió, se suscribió o mandó bits o kicks.",
+  "w": 520,
+  "h": 70,
+  "opciones": [
+   {
+    "clave": "que",
+    "nombre": "Mostrar el último",
+    "tipo": "elegir",
+    "def": "follow",
+    "valores": [
+     [
+      "follow",
+      "Seguidor"
+     ],
+     [
+      "sub",
+      "Sub (o regalo)"
+     ],
+     [
+      "apoyo",
+      "Bits o kicks"
+     ],
+     [
+      "todo",
+      "De cualquiera de esos"
+     ]
+    ]
+   },
+   {
+    "clave": "etiqueta",
+    "nombre": "Texto",
+    "tipo": "texto",
+    "def": "Último seguidor"
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 28,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#000000"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 60,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "alinear",
+    "nombre": "Alineación",
+    "tipo": "elegir",
+    "def": "izquierda",
+    "valores": [
+     [
+      "izquierda",
+      "Izquierda"
+     ],
+     [
+      "centro",
+      "Centro"
+     ],
+     [
+      "derecha",
+      "Derecha"
+     ]
+    ]
+   },
+   {
+    "clave": "negrita",
+    "nombre": "Negrita",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "mayusculas",
+    "nombre": "Mayúsculas",
+    "tipo": "si",
+    "def": false
+   }
+  ]
+ },
+ "cuenta": {
+  "nombre": "Cuenta regresiva",
+  "descripcion": "Una cuenta regresiva desde que se abre la pantalla, para \"empezando\".",
+  "w": 640,
+  "h": 100,
+  "opciones": [
+   {
+    "clave": "minutos",
+    "nombre": "Minutos (desde que se abre la pantalla)",
+    "tipo": "numero",
+    "def": 10,
+    "min": 1,
+    "max": 600
+   },
+   {
+    "clave": "etiqueta",
+    "nombre": "Texto",
+    "tipo": "texto",
+    "def": "Empezamos en"
+   },
+   {
+    "clave": "final",
+    "nombre": "Al terminar",
+    "tipo": "texto",
+    "def": "¡Ya arrancamos!"
+   },
+   {
+    "clave": "fuente",
+    "nombre": "Letra",
+    "tipo": "elegir",
+    "def": "sistema",
+    "valores": [
+     [
+      "sistema",
+      "Normal"
+     ],
+     [
+      "mono",
+      "Monoespaciada"
+     ],
+     [
+      "impacto",
+      "Impacto"
+     ],
+     [
+      "serif",
+      "Con serifa"
+     ]
+    ]
+   },
+   {
+    "clave": "tamano",
+    "nombre": "Tamaño de letra",
+    "tipo": "numero",
+    "def": 48,
+    "min": 8,
+    "max": 300
+   },
+   {
+    "clave": "color",
+    "nombre": "Color de letra",
+    "tipo": "color",
+    "def": "#ffffff"
+   },
+   {
+    "clave": "fondo",
+    "nombre": "Fondo",
+    "tipo": "color",
+    "def": "#000000"
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad del fondo (%)",
+    "tipo": "numero",
+    "def": 0,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "alinear",
+    "nombre": "Alineación",
+    "tipo": "elegir",
+    "def": "centro",
+    "valores": [
+     [
+      "izquierda",
+      "Izquierda"
+     ],
+     [
+      "centro",
+      "Centro"
+     ],
+     [
+      "derecha",
+      "Derecha"
+     ]
+    ]
+   },
+   {
+    "clave": "negrita",
+    "nombre": "Negrita",
+    "tipo": "si",
+    "def": true
+   },
+   {
+    "clave": "mayusculas",
+    "nombre": "Mayúsculas",
+    "tipo": "si",
+    "def": false
+   }
+  ]
+ }
+}

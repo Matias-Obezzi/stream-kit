@@ -9,6 +9,9 @@ Herramientas para streamear en **Twitch y Kick** desde Windows, todo en tu PC, s
   `!clip`.
 - **Chat unificado** de las dos plataformas, con follows, subs, raids y bits, campanita con filtros y moderación con
   click derecho. Muestra los emotes de Twitch, Kick, BTTV, FFZ y 7TV (los globales y los de tu canal). Muestra cuántos miran y, al tocarlo, quiénes están en el chat. Sirve como panel de OBS.
+- **Pantallas para OBS**: armás cada escena en un lienzo, arrastrando piezas (chat, alertas, marcos de ventana,
+  textos, título del stream, espectadores, metas, último seguidor, cuenta regresiva y lluvia de emojis), y la sumás a
+  OBS con un solo link.
 - **Título, categoría y etiquetas** cambiados de una vez en Twitch y Kick.
 - **Consumo**: cuánta CPU, memoria y red usa cada parte (el delay, el bot, cada envío a una plataforma).
 - **Se configura solo**: un botón deja OBS listo, otros suman el panel y el chat adentro de OBS, y otro instala la tecla
@@ -62,6 +65,46 @@ de `global.ini` y de `user.ini`). Después, en OBS: Ajustes → Salida → Emisi
 qué pista usa, una que no tenga la música. La app se la manda solo a Twitch; las demás plataformas reciben el audio
 principal.
 
+## Pantallas para OBS
+
+En **Pantallas** armás lo que va arriba de tu juego o tu cámara. Cada pantalla es un lienzo de 1920 × 1080 (o
+1080 × 1920 para vertical) donde sumás piezas y las acomodás arrastrando; la bolita de la esquina cambia el tamaño y el
+panel de la derecha, los colores y los textos.
+
+| Pieza | Qué hace |
+| --- | --- |
+| Chat | Twitch y Kick juntos, con emotes. Se puede borrar solo a los X segundos; lo que borra o banea un mod se va |
+| Alertas | Follows, subs, regalos, raids, bits y kicks, con sonido opcional |
+| Marco de ventana | Un borde con título para la cámara o una ventana que va debajo en OBS |
+| Texto y título del stream | Un texto libre o el título actual de Twitch o Kick |
+| Espectadores | Cuántos miran en cada plataforma, o la suma |
+| Meta | Seguidores, o follows, subs, bits o kicks de este stream, o una cuenta a mano |
+| Último seguidor o sub | El nombre del último que siguió, se suscribió o mandó bits o kicks |
+| Cuenta regresiva | Para la pantalla de "empezando" |
+| Lluvia de emojis | Los emojis y emotes del chat caen por la pantalla |
+
+Guardá y copiá el link: en OBS, **Fuente → Navegador**, pegalo y poné el mismo tamaño que la pantalla. Lo vacío queda
+transparente. Si después la cambiás y guardás, OBS la actualiza solo en unos segundos.
+
+**CSS propio**: cada pantalla tiene su CSS, que vale solo adentro de ella y se ve al toque en el editor. Cada pieza
+tiene `data-tipo` (`[data-tipo="chat"]`) y la clase que le pongas en su panel; adentro hay clases como `.pz-mensaje`,
+`.pz-alerta` o `.pz-meta-barra i` (la lista está en la pantalla). Para pisar los colores del panel, `!important`.
+
+### Con una IA (MCP)
+
+La app sirve un MCP en `http://127.0.0.1:8080/mcp`, así un agente puede armar y cambiar las pantallas por vos: ve qué
+piezas y opciones hay, crea, cambia (también el CSS) y borra pantallas, y lee los datos en vivo. Solo contesta a esta
+PC. En Claude Code:
+
+```
+claude mcp add --transport http stream-kit http://127.0.0.1:8080/mcp
+```
+
+En otros clientes, agregá un servidor MCP de tipo HTTP con esa dirección.
+
+Para agentes también está [llms.txt](llms.txt): qué pueden hacer, cómo es una pantalla, el CSS y los endpoints para
+overlays propios. Con la app abierta, http://127.0.0.1:8080/llms.txt suma la lista de cada pieza con sus opciones.
+
 ## Controles del delay
 
 - **Bandeja**: clic izquierdo abre el panel; clic derecho, activar delay, volver a vivo o salir. **Salir** cierra todo.
@@ -96,14 +139,14 @@ pythonw app.py
 | Carpeta | Qué tiene |
 | --- | --- |
 | `app.py` | Lo que arranca todo: el guardián, el delay o el bot según la opción |
-| `streamkit/` | El código: `delay.py` (OBS, delay y la web), `chatbot.py` (el bot), `guardian.py`, `cuentas.py` (claves y logins), `canal.py` (título), `obs.py`, `deck.py`, `metricas.py` |
+| `streamkit/` | El código: `delay.py` (OBS, delay y la web), `chatbot.py` (el bot), `guardian.py`, `cuentas.py` (claves y logins), `canal.py` (título), `pantallas.py`, `mcp.py`, `obs.py`, `deck.py`, `metricas.py` |
 | `web/` | Las pantallas del panel |
 | `recursos/` | Íconos, el botón de Stream Deck y StreamDock, y las configs de ejemplo |
 | `tests/` | Las pruebas |
 | `datos/` | Tu config, tus sesiones y los logs cuando corrés desde el código. No se sube |
 
 Pruebas, sin internet y sin tocar tu config ni tu OBS: `python tests/test_chatbot.py`, y lo mismo con `test_cuentas`,
-`test_panel`, `test_canal`, `test_metricas`, `test_obs`, `test_deck` y `test_delay` (este último simula OBS durante unos
+`test_panel`, `test_pantallas`, `test_mcp`, `test_canal`, `test_metricas`, `test_obs`, `test_deck` y `test_delay` (este último simula OBS durante unos
 minutos).
 
 Para armar el .exe en tu PC: `python -m pip install pyinstaller` y `python build.py`. Deja el zip en `dist/`, listo
