@@ -256,8 +256,8 @@ function PruebaSubida({ s, refrescar }: { s: Estado; refrescar: () => void }) {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Manda 20 s de prueba a Twitch en su modo de prueba (no sale en vivo) y mide cuánto sube tu conexión hoy. Hacela antes
-        de empezar: con el stream andando no se puede.
+        Manda 20 s a Twitch en su modo de prueba (no sale en vivo) y mide cuánto pasa por una conexión, como la de cada
+        plataforma. Hacela antes de empezar: con el stream andando no se puede.
       </p>
       {probando && (
         <div className="space-y-1">
@@ -270,13 +270,27 @@ function PruebaSubida({ s, refrescar }: { s: Estado; refrescar: () => void }) {
       {p?.estado === 'listo' && p.mbps !== undefined && (
         <Alert variant={(p.recomendado ?? 0) >= 6000 ? 'success' : 'warning'}>
           <AlertTitle>
-            Tu subida: {(p as { tope?: boolean }).tope ? 'más de ' : ''}
+            Hasta Twitch pasan {p.tope ? 'más de ' : ''}
             {numero(p.mbps, 1)} Mb/s {p.hora ? <span className="font-normal text-muted-foreground">({hace(p.hora)})</span> : null}
           </AlertTitle>
           <AlertDescription>
-            Con {(p as { plataformas?: number }).plataformas ?? 1} plataforma(s) activa(s), usá hasta{' '}
-            <b>{numero(p.recomendado ?? 0)} kbps</b> en OBS (Ajustes → Salida → Bitrate de video). Si querés más en una
-            plataforma, dale bitrate propio a las otras.
+            {p.tope ? (
+              <p>
+                Tu conexión no es el límite. Con {p.plataformas ?? 1} plataforma(s) activa(s), usá hasta{' '}
+                <b>{numero(p.recomendado ?? 0)} kbps</b> en OBS (Ajustes → Salida → Bitrate de video).
+              </p>
+            ) : (
+              <>
+                <p>
+                  Cada plataforma va por su propia conexión y ninguna va a pasar de eso: usá hasta{' '}
+                  <b>{numero(p.recomendado ?? 0)} kbps</b> en OBS (Ajustes → Salida → Bitrate de video).
+                </p>
+                <p>
+                  Un speedtest da más porque usa muchas conexiones a la vez a un servidor cercano. Si da mucho más que esto, en
+                  el camino a Twitch se pierden paquetes y cada conexión se frena: suele ser del proveedor y cambia según la hora.
+                </p>
+              </>
+            )}
           </AlertDescription>
         </Alert>
       )}

@@ -47,6 +47,11 @@ def mandar(ruta, cuerpo):
         return r.status, json.loads(r.read() or b'{}')
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read() or b'{}')
+# la prueba mide una conexión: sin llegar al tope, cada plataforma puede eso (no se reparte); al tope, se reparte
+assert delay.recomendar(4.3, False, 2) == 3000
+assert delay.recomendar(4.3, False, 1) == 3000
+assert delay.recomendar(24, True, 2) == 8000 and delay.recomendar(24, True, 3) == 6000
+assert delay.recomendar(0.4, False, 1) == 0
 codigo, r = mandar('/api/red/prueba', {})
 assert codigo == 400 and 'Twitch' in r['error'], r  # sin Twitch configurado no hay contra qué probar
 assert mandar('/api/destinations/add', {'name': 'Kick', 'url': 'rtmps://kick.test/app', 'key': 'k'})[0] == 200

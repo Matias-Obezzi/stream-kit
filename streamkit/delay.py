@@ -93,6 +93,14 @@ def hay_ffmpeg(ffmpeg):
     return bool(shutil.which(ffmpeg))
 
 
+def recomendar(mbps, tope, activas):
+    """kbps por plataforma según la prueba de subida. La prueba mide UNA conexión: si no llegó al tope, lo que limita es
+    esa conexión (con pérdida de paquetes en el camino, TCP no pasa de unos Mb/s) y cada plataforma va por la suya, así
+    que no se reparte; si llegó al tope, lo que limita es la subida entera y se reparte entre las activas."""
+    kbps = mbps * 750  # tres cuartos de lo medido: margen para los picos
+    return int(min(8000, kbps / max(1, activas) if tope else kbps) // 500 * 500)
+
+
 def tcp_segmentos():
     """(salidos, reenviados) de TCP en toda la PC, de Windows. None si no se puede leer."""
     stats = (wintypes.DWORD * 15)()  # MIB_TCPSTATS: el 11 son los salidos y el 12 los reenviados
@@ -551,9 +559,9 @@ class Bridge:
             (t0, b0), (t1, b1) = utiles[0], utiles[-1]
             total = round((b1 - b0) * 8 / 1e6 / (t1 - t0), 1)
             activas = max(1, sum(1 for d in self.cfg.get('destinations', []) if d.get('enabled', True)))
-            # tres cuartos de lo medido entre las plataformas activas, como mucho 8000 kbps cada una
-            recomendado = int(min(8000, total * 750 / activas) // 500 * 500)
-            self.prueba = {'estado': 'listo', 'mbps': total, 'tope': total >= mbps * 0.9, 'recomendado': recomendado,
+            tope = total >= mbps * 0.9
+            recomendado = recomendar(total, tope, activas)
+            self.prueba = {'estado': 'listo', 'mbps': total, 'tope': tope, 'recomendado': recomendado,
                            'plataformas': activas, 'hora': time.time(), 'progreso': 1}
             print(f'Prueba de subida: {total} Mb/s; recomendado {recomendado} kbps por plataforma ({activas}).', flush=True)
         except (OSError, ValueError) as e:

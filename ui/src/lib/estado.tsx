@@ -38,6 +38,8 @@ export interface PruebaSubida {
   estado: '' | 'probando' | 'listo' | 'error'
   mbps?: number
   recomendado?: number
+  tope?: boolean
+  plataformas?: number
   error?: string
   hora?: number
   progreso?: number
