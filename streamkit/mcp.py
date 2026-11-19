@@ -37,6 +37,8 @@ PANTALLA = {
                 'op': {'type': 'object', 'description': 'Opciones de la pieza (ver_piezas dice cuáles hay). Las que faltan toman su valor de siempre.'},
                 'clase': {'type': 'string', 'description': 'Una clase CSS para apuntarle desde css.'},
             }}},
+        'tema': {'type': 'string', 'description': 'El id de un tema (ver_temas): sus colores van en las opciones de color '
+                 'como "tema:acento" y su letra con "fuente": "tema". Sin tema, esas opciones usan su valor de siempre.'},
         'css': {'type': 'string', 'description': 'CSS propio, que vale solo adentro de esta pantalla. Cada pieza tiene '
                 'data-tipo y su clase; adentro hay .pz-mensaje, .pz-quien, .pz-alerta, .pz-alerta-quien, .pz-marco, '
                 '.pz-marco-titulo, .pz-bloque, .pz-meta, .pz-meta-barra i, .pz-gota y .emote. Los colores de las '
@@ -70,6 +72,17 @@ HERRAMIENTAS = [
      'inputSchema': {'type': 'object', 'properties': {'textos': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
                      'required': ['textos']},
      'annotations': {'destructiveHint': True, 'idempotentHint': True}},
+    {'name': 'ver_temas', 'description': 'Los temas: paletas de cuatro colores (texto, fondo, acento, acento2) y una letra de '
+     'Google. Una pantalla usa uno con "tema": id; sus piezas toman los colores con "tema:acento" (o tema:texto, '
+     'tema:fondo, tema:acento2) en cualquier opción de color, y la letra con "fuente": "tema". Cambiar el tema cambia '
+     'todas las pantallas que lo usan.', 'inputSchema': NADA, 'annotations': {'readOnlyHint': True}},
+    {'name': 'guardar_temas', 'description': 'Reemplaza todos los temas (leelos antes con ver_temas para no borrar los demás '
+     'y mantené sus id: las pantallas los usan). Un tema sin id es nuevo. Devuelve la lista con los id.',
+     'inputSchema': {'type': 'object', 'properties': {'temas': {'type': 'array', 'items': {'type': 'object', 'properties': {
+         'id': {'type': 'string'}, 'nombre': {'type': 'string'}, 'letra': {'type': 'string'},
+         'colores': {'type': 'object', 'properties': {c: {'type': 'string'} for c in ('texto', 'fondo', 'acento', 'acento2')}}},
+         'required': ['nombre', 'colores']}}}, 'required': ['temas']},
+     'annotations': {'destructiveHint': True, 'idempotentHint': True}},
     {'name': 'datos_en_vivo', 'description': 'Lo que muestran las piezas ahora: espectadores, seguidores, títulos y lo '
      'que pasó en este stream (follows, subs, bits y kicks).', 'inputSchema': NADA, 'annotations': {'readOnlyHint': True}},
 ]
@@ -101,6 +114,10 @@ def usar(nombre, args, puerto):
         return pantallas.leer_textos()
     if nombre == 'guardar_textos':
         return pantallas.guardar_textos(args.get('textos'))
+    if nombre == 'ver_temas':
+        return pantallas.leer_temas()
+    if nombre == 'guardar_temas':
+        return pantallas.guardar_temas(args.get('temas'))
     if nombre == 'datos_en_vivo':
         return pantallas.datos()
     raise KeyError(nombre)

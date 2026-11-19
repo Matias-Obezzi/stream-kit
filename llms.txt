@@ -35,6 +35,8 @@ Herramientas:
 | `borrar_pantalla` `{id}` | La borra. No se puede deshacer |
 | `ver_textos` | Los textos compartidos, como `{"tema": "Ranked"}` |
 | `guardar_textos` `{textos}` | Reemplaza todos los textos compartidos (leelos antes para no borrar los demás). OBS los toma en unos 15 segundos |
+| `ver_temas` | Los temas: paletas de cuatro colores y una letra que comparten las piezas |
+| `guardar_temas` `{temas}` | Reemplaza todos los temas (leelos antes y mantené sus `id`: las pantallas los usan). Uno sin `id` es nuevo |
 | `datos_en_vivo` | Espectadores, seguidores, títulos, textos compartidos y lo de este stream |
 
 Cómo trabajar:
@@ -90,6 +92,11 @@ stream en Twitch o Kick), `viewers`, `meta` (seguidores, o follows, subs, bits o
   escena se activa".
 - **Letra de Google**: en las piezas con `fuente`, `"fuente": "google"` y `"fuente_google": "Bebas Neue"` (el nombre tal
   cual figura en fonts.google.com; solo letras, números y espacios).
+- **Temas**: un tema es `{"nombre", "colores": {"texto", "fondo", "acento", "acento2"}, "letra"}` (los cuatro colores
+  como `#rrggbb`; `letra`, una fuente de Google). La pantalla lo elige con `"tema": "<id>"`; en sus piezas, cualquier
+  opción de color acepta `"tema:acento"` (o `tema:texto`, `tema:fondo`, `tema:acento2`) y la letra, `"fuente": "tema"`.
+  Al cambiar el tema cambian todas las pantallas que lo usan. Para una marca, armá el tema primero y usá sus colores en
+  vez de colores fijos.
 - **Textos compartidos**: `{tema}` en `texto` (pieza texto), `titulo` (marco y meta) o `etiqueta` y `final` (cuenta)
   muestra el texto compartido `tema`. Sirve para lo que cambia seguido y aparece en varias pantallas (el tema del día,
   el próximo stream): se cambia una vez con `guardar_textos`.

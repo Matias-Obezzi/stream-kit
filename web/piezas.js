@@ -9,9 +9,17 @@
     impacto: 'Impact, "Arial Black", sans-serif', serif: 'Georgia, "Times New Roman", serif',
   };
 
+  // el tema de la pantalla: sus colores se usan con "tema:acento" en cualquier color, y su letra con "fuente": "tema"
+  let tema = null;
+  const ponerTema = t => { tema = t && typeof t === 'object' ? t : null; };
+
   // valores sanos aunque la config esté rota
   const num = (v, min, max, def) => (Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : def);
-  const color = (v, def) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : def);
+  const hex = v => /^#[0-9a-f]{6}$/i.test(v || '');
+  const color = (v, def) => {
+    if (typeof v === 'string' && v.startsWith('tema:')) v = tema && tema.colores ? tema.colores[v.slice(5)] : null;
+    return hex(v) ? v : def;
+  };
   const rgba = (c, opacidad) => {
     c = color(c, '#000000');
     return `rgba(${parseInt(c.slice(1, 3), 16)}, ${parseInt(c.slice(3, 5), 16)}, ${parseInt(c.slice(5, 7), 16)}, ${num(opacidad, 0, 100, 0) / 100})`;
@@ -37,7 +45,8 @@
     return '"' + nombre + '", system-ui, sans-serif';
   }
   function letra(e, o) {
-    e.style.fontFamily = (o.fuente === 'google' && deGoogle(o.fuente_google)) || FUENTES[o.fuente] || FUENTES.sistema;
+    e.style.fontFamily = (o.fuente === 'google' && deGoogle(o.fuente_google)) || (o.fuente === 'tema' && tema && deGoogle(tema.letra))
+      || FUENTES[o.fuente] || FUENTES.sistema;
     e.style.fontSize = num(o.tamano, 8, 300, 24) + 'px';
     e.style.color = color(o.color, '#ffffff');
   }
@@ -529,5 +538,5 @@
   const ESQUEMA = window.PIEZAS_ESQUEMA || {};
   Object.keys(PIEZAS).forEach(t => Object.assign(PIEZAS[t], ESQUEMA[t] || { nombre: t, w: 400, h: 200, opciones: [] }));
 
-  window.Piezas = { PIEZAS, FORMATOS, MUESTRA, montar, predeterminadas, css, ponerCss, rellenar };
+  window.Piezas = { PIEZAS, FORMATOS, MUESTRA, montar, predeterminadas, css, ponerCss, rellenar, ponerTema, color };
 })();

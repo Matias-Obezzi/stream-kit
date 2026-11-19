@@ -23,12 +23,15 @@ const cada = (nombre, ...args) => vivas.forEach(v => { try { v[nombre] && v[nomb
 async function armar() {
   try {
     const p = (await (await fetch('/api/pantallas', { cache: 'no-store' })).json()).find(x => x.id === id);
-    const v = p ? p.actualizado : 'no existe';
+    // el tema también cuenta como cambio: si le cambian un color, la pantalla se rearma con el nuevo
+    const t = p && p.tema ? (await (await fetch('/api/pantallas/temas', { cache: 'no-store' })).json()).find(x => x.id === p.tema) : null;
+    const v = p ? p.actualizado + JSON.stringify(t || '') : 'no existe';
     if (v !== version) {
       version = v;
       cada('quitar');
       lienzo.replaceChildren();
       vivas = [];
+      Piezas.ponerTema(t);
       Piezas.ponerCss(p && p.css, '#lienzo');
       if (p) {
         const [ancho, alto] = Piezas.FORMATOS[p.formato] || Piezas.FORMATOS.horizontal;

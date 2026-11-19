@@ -56,7 +56,15 @@ interface Pantalla {
   nombre: string
   formato: string
   css?: string
+  tema?: string
   piezas: Pieza[]
+}
+interface Tema {
+  id?: string
+  nombre: string
+  colores: Record<string, string>
+  letra: string
+  clave?: number // solo en el editor, para las listas de React
 }
 interface Viva {
   caja: HTMLElement
@@ -71,13 +79,19 @@ interface PiezasApi {
   predeterminadas(tipo: string): Record<string, unknown>
   ponerCss(texto: string | undefined, raiz: string): void
   MUESTRA: { textos: Record<string, string> }
+  ponerTema(t: Tema | null): void
+  color(v: unknown, def: string): string
 }
 // Globales de /piezas.js y /emotes.js. Sin `declare global`: otras páginas pueden declararlas a su manera.
 const Piezas = () => (window as unknown as { Piezas: PiezasApi }).Piezas
 const Emotes = () => (window as unknown as { Emotes: { cargar(api: string): Promise<unknown> } }).Emotes
 
 const NUEVA = '__nueva__' // el Select no acepta '' como valor
+const SIN_TEMA = '__sin_tema__'
 const ANIMACION = ['entrada', 'salida', 'velocidad', 'retraso'] // van juntas, abajo, con el botón para probarlas
+// los colores de un tema: fijos, así cualquier tema le sirve a cualquier pantalla (los mismos que en pantallas.py)
+const COLORES_TEMA: [string, string][] = [['texto', 'Texto'], ['fondo', 'Fondo'], ['acento', 'Acento'], ['acento2', 'Segundo acento']]
+const TEMA_NUEVO = (): Tema => ({ nombre: 'Mi tema', letra: '', colores: { texto: '#ffffff', fondo: '#0f1115', acento: '#8b5cf6', acento2: '#22c55e' } })
 const nueva = (cuantas: number): Pantalla => ({ id: '', nombre: 'Pantalla ' + (cuantas + 1), formato: 'horizontal', piezas: [] })
 
 // Clases para las cajas que crea piezas.js (Tailwind las encuentra igual en el texto). La caja elegida lleva `elegida`.
@@ -110,6 +124,8 @@ export default function Pagina() {
   const [sucio, setSucio] = React.useState(false)
   const [aviso, setAviso] = React.useState('')
   const [pregunta, setPregunta] = React.useState<Pregunta>()
+  const [temas, setTemasEstado] = React.useState<Tema[]>([])
+  const temasRef = React.useRef<Tema[]>([])
   const [preguntando, setPreguntando] = React.useState(false)
 
   // Lo que usa el lienzo: refs, porque piezas.js y los eventos del puntero viven fuera de React
@@ -135,6 +151,29 @@ export default function Pagina() {
     })
   const descartar = async () =>
     !sucioRef.current || preguntar({ titulo: 'Hay cambios sin guardar. ¿Los descartás?', accion: 'Descartar' })
+
+  // --- el tema de la pantalla abierta: sus colores y su letra llegan a las piezas ---
+  const temaDe = (id?: string) => (id ? temasRef.current.find((t) => t.id === id) || null : null)
+  function aplicarTema() {
+    Piezas().ponerTema(temaDe(actual.current?.tema))
+  }
+  function setTemas(lista: Tema[]) { // al editar un tema, el lienzo lo muestra al toque
+    temasRef.current = lista
+    setTemasEstado(lista)
+    if (!actual.current) return
+    aplicarTema()
+    dibujar()
+    setPanel((n) => n + 1)
+  }
+  function elegirTema(id: string) {
+    const a = actual.current!
+    if (id) a.tema = id
+    else delete a.tema
+    aplicarTema()
+    dibujar()
+    setPanel((n) => n + 1)
+    marcar(true)
+  }
 
   // --- el lienzo ---
   const medidas = () => Piezas().FORMATOS[actual.current!.formato] || Piezas().FORMATOS.horizontal
@@ -262,6 +301,7 @@ export default function Pagina() {
     actual.current = a
     elegidaRef.current = -1
     Piezas().ponerCss(a.css, '#lienzo')
+    aplicarTema()
     setLink(
       a.id
         ? {
@@ -327,6 +367,13 @@ export default function Pagina() {
         } catch {
           /* sin textos: las piezas muestran {nombre} */
         }
+        try {
+          const t = await get<Tema[]>('/api/pantallas/temas')
+          temasRef.current = t
+          setTemasEstado(t)
+        } catch {
+          avisar('No pude leer los temas.')
+        }
         if (!vivo) return
         setPantallas(lista)
         setListo(true)
@@ -344,6 +391,7 @@ export default function Pagina() {
       vivas.current.forEach((v) => v.quitar?.())
       vivas.current = []
       ;(window as unknown as { Piezas?: PiezasApi }).Piezas?.ponerCss('', '#lienzo')
+      ;(window as unknown as { Piezas?: PiezasApi }).Piezas?.ponerTema(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- una vez; lo que usa vive en refs
   }, [])
@@ -426,6 +474,12 @@ export default function Pagina() {
               <li>
                 <b>Letra</b>: además de las de siempre, cualquier fuente de Google Fonts: elegí <b>De Google Fonts</b> y
                 escribí su nombre tal cual figura en fonts.google.com (por ejemplo, Bebas Neue).
+              </li>
+              <li>
+                <b>Temas</b>: una paleta de cuatro colores (texto, fondo, acento y segundo acento) y una letra de Google.
+                Elegí el tema de la pantalla arriba y, en cada color de una pieza, tocá uno del tema en vez de un color
+                fijo. Si después cambiás el tema, cambian todas las pantallas que lo usan. Con <b>Copiar</b> lo pasás
+                como texto a otra persona, y ella lo trae con <b>Importar</b>.
               </li>
               <li>
                 <b>Textos compartidos</b>: escribí <code>{'{tema}'}</code> en un texto, un título de marco o meta, o la
@@ -521,6 +575,20 @@ export default function Pagina() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="pantalla-tema" className="text-muted-foreground">Tema</Label>
+              <Select value={a?.tema && temas.some((t) => t.id === a.tema) ? a.tema : SIN_TEMA} disabled={!listo} onValueChange={(v) => elegirTema(v === SIN_TEMA ? '' : v)}>
+                <SelectTrigger id="pantalla-tema" className="w-44 max-w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SIN_TEMA}>Sin tema</SelectItem>
+                  {temas.filter((t) => t.id).map((t) => (
+                    <SelectItem key={t.id} value={t.id!}>{t.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button onClick={() => void guardar()} disabled={!listo}>
               <SaveIcon aria-hidden /> Guardar
             </Button>
@@ -607,6 +675,7 @@ export default function Pagina() {
                     <Campo
                       key={x.clave}
                       x={x}
+                      tema={temaDe(a?.tema)}
                       valor={valores[x.clave]}
                       cambiar={(v) => {
                         pieza.op = { ...pieza.op, [x.clave]: v }
@@ -658,6 +727,16 @@ export default function Pagina() {
             )}
           </Seccion>
         </div>
+
+        {listo && (
+          <Temas
+            temas={temas}
+            setTemas={setTemas}
+            enUso={a?.tema}
+            usar={(id) => elegirTema(id)}
+            avisarCopia={avisar}
+          />
+        )}
 
         {listo && (
           <Textos
@@ -729,9 +808,10 @@ export default function Pagina() {
 }
 
 /** Un campo de opciones, según el tipo que dice el esquema de la pieza. */
-function Campo({ x, valor, cambiar }: { x: Opcion; valor: unknown; cambiar: (v: unknown) => void }) {
+function Campo({ x, valor, cambiar, tema }: { x: Opcion; valor: unknown; cambiar: (v: unknown) => void; tema?: Tema | null }) {
   const id = React.useId()
   if (x.tipo === 'imagen') return <CampoImagen x={x} valor={String(valor || '')} cambiar={cambiar} />
+  if (x.tipo === 'color') return <CampoColor id={id} x={x} valor={String(valor || '')} cambiar={cambiar} tema={tema} />
   if (x.tipo === 'si')
     return (
       <div className="flex items-center gap-2">
@@ -752,18 +832,6 @@ function Campo({ x, valor, cambiar }: { x: Opcion; valor: unknown; cambiar: (v: 
           ))}
         </SelectContent>
       </Select>
-    )
-  else if (x.tipo === 'color')
-    control = (
-      <ColorPicker
-        id={id}
-        className="w-full"
-        alpha={false}
-        format="hex"
-        defaultValue={typeof valor === 'string' && valor ? valor : '#000000'}
-        // piezas.js solo lee #rrggbb: si eligen otro formato en el selector, no se toma
-        onValueChange={(v) => /^#[0-9a-f]{6}$/i.test(v) && cambiar(v)}
-      />
     )
   else
     control = (
@@ -925,6 +993,178 @@ function Textos({ alGuardar }: { alGuardar: (t: Record<string, string>) => void 
             <p role="status" className={cn('text-sm', aviso.error ? 'text-destructive' : 'text-muted-foreground')}>{aviso.texto}</p>
           )}
         </div>
+      </div>
+    </Seccion>
+  )
+}
+
+/** Un color: uno fijo o uno del tema de la pantalla (se guarda como "tema:acento" y cambia si cambia el tema). */
+function CampoColor({ id, x, valor, cambiar, tema }: { id: string; x: Opcion; valor: string; cambiar: (v: unknown) => void; tema?: Tema | null }) {
+  const [actual, setActual] = React.useState(valor)
+  const delTema = actual.startsWith('tema:') ? actual.slice(5) : ''
+  const usar = (v: string) => {
+    setActual(v)
+    cambiar(v)
+  }
+  const fijo = /^#[0-9a-f]{6}$/i.test(actual) ? actual : (tema && delTema && tema.colores[delTema]) || '#000000'
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id} className="text-muted-foreground">{x.nombre}</Label>
+      {tema && (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={`${x.nombre}: colores del tema`}>
+          {COLORES_TEMA.map(([c, n]) => (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={delTema === c}
+              title={`${n} del tema`}
+              onClick={() => usar('tema:' + c)}
+              className="flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:border-primary aria-pressed:bg-primary/10"
+            >
+              <span aria-hidden className="size-3.5 rounded-sm ring-1 ring-border" style={{ background: tema.colores[c] }} />
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+      {delTema ? (
+        <p className="flex flex-wrap items-center gap-2 text-sm">
+          <span aria-hidden className="size-4 rounded-sm ring-1 ring-border" style={{ background: fijo }} />
+          Del tema{tema ? '' : ' (esta pantalla no tiene tema: usa el de siempre)'}
+          <Button variant="link" size="sm" className="h-auto p-0" onClick={() => usar(fijo)}>
+            Usar un color fijo
+          </Button>
+        </p>
+      ) : (
+        <ColorPicker
+          key={actual === fijo ? 'fijo' : actual}
+          id={id}
+          className="w-full"
+          alpha={false}
+          format="hex"
+          defaultValue={fijo}
+          // piezas.js solo lee #rrggbb: si eligen otro formato en el selector, no se toma
+          onValueChange={(v) => /^#[0-9a-f]{6}$/i.test(v) && usar(v)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Los temas: se crean, se cambian, se copian como texto para compartirlos y se importan. */
+function Temas({
+  temas,
+  setTemas,
+  enUso,
+  usar,
+  avisarCopia,
+}: {
+  temas: Tema[]
+  setTemas: (t: Tema[]) => void
+  enUso?: string
+  usar: (id: string) => void
+  avisarCopia: (texto: string) => void
+}) {
+  const [sucio, setSucio] = React.useState(false)
+  const [aviso, setAviso] = React.useState<{ texto: string; error?: boolean }>()
+  const [importar, setImportar] = React.useState('')
+  const n = React.useRef(0)
+  const clave = (t: Tema) => t.id || 'nuevo-' + (t.clave ??= n.current++)
+  const cambiar = (lista: Tema[]) => {
+    setTemas(lista)
+    setSucio(true)
+    setAviso(undefined)
+  }
+  const editar = (i: number, cambio: Partial<Tema>) => cambiar(temas.map((t, k) => (k === i ? { ...t, ...cambio } : t)))
+  async function guardar() {
+    try {
+      const lista = await post<Tema[]>('/api/pantallas/temas', temas.map(({ clave: _, ...t }) => t))
+      setTemas(lista)
+      setSucio(false)
+      setAviso({ texto: 'Guardados. Las pantallas que los usan cambian en unos segundos.' })
+    } catch (e) {
+      setAviso({ texto: e instanceof ApiError ? e.message : 'La app no contestó.', error: true })
+    }
+  }
+  function traer() {
+    try {
+      const t = JSON.parse(importar)
+      if (!t || typeof t !== 'object' || typeof t.colores !== 'object') throw new Error()
+      cambiar([...temas, { nombre: String(t.nombre || 'Importado'), letra: String(t.letra || ''), colores: { ...TEMA_NUEVO().colores, ...t.colores } }])
+      setImportar('')
+      setAviso({ texto: 'Importado. Guardá los temas para usarlo.' })
+    } catch {
+      setAviso({ texto: 'Eso no es un tema: pegá el texto que copió la otra persona con Copiar.', error: true })
+    }
+  }
+  return (
+    <Seccion
+      titulo="Temas"
+      descripcion="Una paleta de colores y una letra que comparten las piezas. Cambiás el tema y cambian todas las pantallas que lo usan."
+    >
+      <div className="grid gap-4">
+        {temas.map((t, i) => (
+          <div key={clave(t)} className="grid gap-3 rounded-lg border p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="grid min-w-0 flex-1 gap-1.5">
+                <Label htmlFor={'tema-nombre-' + clave(t)} className="text-muted-foreground">Nombre</Label>
+                <Input id={'tema-nombre-' + clave(t)} maxLength={40} value={t.nombre} onChange={(e) => editar(i, { nombre: e.target.value })} />
+              </div>
+              <div className="grid min-w-0 flex-1 gap-1.5">
+                <Label htmlFor={'tema-letra-' + clave(t)} className="text-muted-foreground">Letra (de Google Fonts)</Label>
+                <Input id={'tema-letra-' + clave(t)} maxLength={60} placeholder="Anton" value={t.letra} onChange={(e) => editar(i, { letra: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {COLORES_TEMA.map(([c, nombre]) => (
+                <div key={c} className="grid min-w-0 gap-1.5">
+                  <Label htmlFor={`tema-${c}-${clave(t)}`} className="text-muted-foreground">{nombre}</Label>
+                  <ColorPicker
+                    id={`tema-${c}-${clave(t)}`}
+                    className="w-full"
+                    alpha={false}
+                    format="hex"
+                    defaultValue={t.colores[c]}
+                    onValueChange={(v) => /^#[0-9a-f]{6}$/i.test(v) && editar(i, { colores: { ...t.colores, [c]: v } })}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {t.id && t.id !== enUso && (
+                <Button variant="outline" size="sm" onClick={() => usar(t.id!)}>Usar en esta pantalla</Button>
+              )}
+              {t.id === enUso && <Badge variant="secondary">En esta pantalla</Badge>}
+              <CopyButton
+                value={JSON.stringify({ nombre: t.nombre, letra: t.letra, colores: t.colores })}
+                variant="outline"
+                size="sm"
+                onCopyError={() => avisarCopia('El navegador no dejó copiar el tema.')}
+              >
+                Copiar
+              </CopyButton>
+              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => cambiar(temas.filter((_, k) => k !== i))}>
+                Quitar
+              </Button>
+            </div>
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => cambiar([...temas, TEMA_NUEVO()])} disabled={temas.length >= 20}>
+            <PlusIcon aria-hidden /> Nuevo tema
+          </Button>
+          <Button size="sm" onClick={() => void guardar()} disabled={!sucio}>
+            <SaveIcon aria-hidden /> Guardar temas
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            <Label htmlFor="tema-importar" className="text-muted-foreground">Importar un tema que te pasaron</Label>
+            <Input id="tema-importar" placeholder='{"nombre": "…", "colores": {…}}' value={importar} onChange={(e) => setImportar(e.target.value)} />
+          </div>
+          <Button variant="outline" size="sm" onClick={traer} disabled={!importar.trim()}>Importar</Button>
+        </div>
+        {aviso && <p role="status" className={cn('text-sm', aviso.error ? 'text-destructive' : 'text-muted-foreground')}>{aviso.texto}</p>}
       </div>
     </Seccion>
   )

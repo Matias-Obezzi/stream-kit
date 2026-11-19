@@ -125,6 +125,11 @@ activa**. **Probar animación** la muestra en el editor. Con "reducir movimiento
 **Letra**: además de las de siempre, cualquier fuente de [Google Fonts](https://fonts.google.com): elegí **De Google
 Fonts** y escribí su nombre (por ejemplo, Bebas Neue).
 
+**Temas**: una paleta de cuatro colores (texto, fondo, acento y segundo acento) y una letra de Google. Cada pantalla
+elige su tema, y en cada color de una pieza podés tocar uno del tema en vez de un color fijo: si después cambiás el
+tema, cambian todas las pantallas que lo usan. Con **Copiar** el tema sale como texto para pasárselo a otra persona, que
+lo trae con **Importar**.
+
 **Textos compartidos**: lo que cambia seguido y aparece en varias pantallas (el tema del día, el próximo stream) se
 escribe una vez, abajo del lienzo. En una pieza, `{tema}` muestra el texto `tema`: sirve en los textos, el título del
 marco y de la meta, y la etiqueta y el final de la cuenta regresiva. OBS toma los cambios en unos 15 segundos.

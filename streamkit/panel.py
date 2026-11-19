@@ -191,6 +191,8 @@ def panel():
                 return self.reply(200, json.dumps(pantallas.datos()).encode())
             if path == '/api/pantallas/textos':
                 return self.reply(200, json.dumps(pantallas.leer_textos()).encode())
+            if path == '/api/pantallas/temas':
+                return self.reply(200, json.dumps(pantallas.leer_temas()).encode())
             if path == '/api/pantallas/imagenes':
                 return self.reply(200, json.dumps(pantallas.imagenes()).encode())
             if path.startswith('/imagenes/'):  # las de la pieza de imagen
@@ -340,6 +342,11 @@ def panel():
                     else:
                         canal.guardar_preset(s)
                     return self.reply(200, json.dumps(canal.presets()).encode())
+                except (OSError, ValueError) as e:
+                    return self.error(str(e))
+            if path == '/api/pantallas/temas':
+                try:
+                    return self.reply(200, json.dumps(pantallas.guardar_temas(s)).encode())
                 except (OSError, ValueError) as e:
                     return self.error(str(e))
             if path == '/api/pantallas/textos':

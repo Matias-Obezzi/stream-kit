@@ -22,7 +22,7 @@ assert mcp.atender({'jsonrpc': '2.0', 'method': 'notifications/initialized'}, 80
 assert pedir('ping')['result'] == {}
 herramientas = {h['name']: h for h in pedir('tools/list')['result']['tools']}
 assert set(herramientas) == {'ver_piezas', 'listar_pantallas', 'ver_pantalla', 'guardar_pantalla', 'borrar_pantalla', 'datos_en_vivo',
-                             'ver_textos', 'guardar_textos'}
+                             'ver_textos', 'guardar_textos', 'ver_temas', 'guardar_temas'}
 assert all(h['description'] and h['inputSchema']['type'] == 'object' for h in herramientas.values())
 json.dumps(herramientas)  # todo se puede mandar
 
@@ -61,4 +61,13 @@ assert usar('guardar_textos', textos={'tema': 'Ranked', 'proximo': 'Viernes 21 h
 error, fallo = usar('guardar_textos', textos={'Tema del día': 'x'})
 assert fallo and 'minúsculas' in error, error
 assert usar('ver_textos')[0]['tema'] == 'Ranked' and usar('datos_en_vivo')[0]['textos']['proximo'] == 'Viernes 21 h'
+# temas: un agente crea la paleta de la marca y una pantalla la usa
+temas, fallo = usar('guardar_temas', temas=[{'nombre': 'Marca', 'letra': 'Anton', 'colores': {'texto': '#F2F5F7', 'fondo': '#0b0c0e', 'acento': '#c6ff2e', 'acento2': '#9146ff'}}])
+assert not fallo and temas[0]['id'] and temas[0]['colores']['texto'] == '#f2f5f7'
+error, fallo = usar('guardar_temas', temas=[{'nombre': 'Rota', 'colores': {'texto': 'blanco'}}])
+assert fallo and 'texto' in error, error
+p2, fallo = usar('guardar_pantalla', pantalla={'nombre': 'Con tema', 'tema': temas[0]['id'], 'piezas': [
+    {'tipo': 'texto', 'x': 0, 'y': 0, 'w': 400, 'h': 80, 'op': {'color': 'tema:acento', 'fuente': 'tema'}}]})
+assert not fallo and p2['tema'] == temas[0]['id'] and p2['piezas'][0]['op']['color'] == 'tema:acento', p2
+assert usar('ver_temas')[0] == temas
 print('ok')

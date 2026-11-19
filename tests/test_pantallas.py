@@ -138,4 +138,25 @@ for malo, texto in (({'Tema': 'x'}, 'minúsculas'), ({'tema del dia': 'x'}, 'min
     except ValueError as e:
         assert texto in str(e), e
 assert p.leer_textos()['tema'] == 'Ranked', 'lo rechazado no pisa lo guardado'
+# temas: cuatro colores fijos y una letra; las piezas los usan con tema:acento y "fuente": "tema"
+assert p.leer_temas() == []
+t = p.guardar_temas([{'nombre': '  Marca  ', 'letra': 'Archivo Black', 'colores': {'texto': '#FFFFFF', 'fondo': '#000000', 'acento': '#c6ff2e', 'acento2': '#9146ff', 'otro': 'x'}},
+                     {'id': '../x', 'nombre': 'Otra', 'colores': {'texto': '#111111', 'fondo': '#222222', 'acento': '#333333', 'acento2': '#444444'}}])
+assert t[0]['nombre'] == 'Marca' and t[0]['colores'] == {'texto': '#ffffff', 'fondo': '#000000', 'acento': '#c6ff2e', 'acento2': '#9146ff'}
+assert len(t[1]['id']) == 8, 'un id raro se cambia por uno nuevo'
+assert p.guardar_temas(t) == t, 'guardar lo mismo lo deja igual (los id se mantienen)'
+for malo, texto in (([{'nombre': 'x', 'colores': {}}], 'texto'), ([{'colores': {}}], 'nombre'), ([{'nombre': 'x', 'colores': dict(t[0]['colores'], acento='lima')}], 'acento'),
+                    ([dict(t[0], letra='x&y')], 'letra'), ([t[0], t[0]], 'mismo id'), ({}, 'lista'), ([t[0]] * 21, '20')):
+    try:
+        p.guardar_temas(malo)
+        raise AssertionError('tenía que fallar')
+    except ValueError as e:
+        assert texto in str(e), (texto, e)
+assert p.leer_temas() == t, 'lo rechazado no pisa lo guardado'
+assert p.opciones('texto', {'color': 'tema:acento', 'fondo': 'tema:acento2', 'fuente': 'tema'}) == {'color': 'tema:acento', 'fondo': 'tema:acento2', 'fuente': 'tema'}
+falla(pieza({'color': 'tema:violeta'}, 'texto'), 'tema:acento')
+c = p.guardar({'nombre': 'Con tema', 'tema': t[0]['id'], 'piezas': []})
+assert c['tema'] == t[0]['id'] and 'tema' not in p.guardar({'nombre': 'Sin tema', 'piezas': []})
+falla({'nombre': 'x', 'tema': '../temas'}, 'tema')
 print('ok')
+

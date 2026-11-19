@@ -17,6 +17,7 @@ from rutas import BOT, DATOS, WEB
 
 ARCHIVO = os.path.join(DATOS, 'pantallas.json')
 TEXTOS = os.path.join(DATOS, 'textos.json')        # los textos compartidos: {tema} en cualquier pantalla
+TEMAS = os.path.join(DATOS, 'temas.json')          # paletas de colores y letra que comparten las piezas
 IMAGENES = os.path.join(DATOS, 'imagenes')          # las que se suben para la pieza de imagen
 APOYOS = os.path.join(BOT, 'apoyos.json')  # lo escribe el bot
 with open(os.path.join(WEB, 'piezas.json'), encoding='utf-8') as _f:
@@ -31,6 +32,8 @@ TIPOS = tuple(ESQUEMA)
 IMAGEN_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
 MAX_IMAGEN = 15 * 1024 * 1024
 MAX_TEXTOS = 30
+MAX_TEMAS = 20
+COLORES_TEMA = ('texto', 'fondo', 'acento', 'acento2')  # fijos: así cualquier tema le sirve a cualquier pantalla
 MAX_CSS = 20000
 FORMATOS = {'horizontal': (1920, 1080), 'vertical': (1080, 1920)}
 MAX_PANTALLAS, MAX_PIEZAS = 50, 40
@@ -83,8 +86,8 @@ def opciones(tipo, op):
                 raise ValueError(f'{que} tiene que ser un número.')
             valor = max(o['min'], min(o['max'], valor))
         elif o['tipo'] == 'color':
-            if not isinstance(valor, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', valor):
-                raise ValueError(f'{que} es un color como #8b5cf6.')
+            if not isinstance(valor, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}|tema:(' + '|'.join(COLORES_TEMA) + ')', valor):
+                raise ValueError(f'{que} es un color como #8b5cf6, o uno del tema: ' + ', '.join('tema:' + c for c in COLORES_TEMA) + '.')
         elif o['tipo'] == 'elegir':
             validos = [v for v, _ in o['valores']]
             if valor not in validos:
@@ -128,11 +131,14 @@ def validar(datos):
     pid = str(datos.get('id') or '')
     if pid and not re.fullmatch(r'[a-z0-9]{1,16}', pid):
         raise ValueError('Pedido inválido.')
+    tema = str(datos.get('tema') or '')
+    if tema and not re.fullmatch(r'[a-z0-9]{1,16}', tema):
+        raise ValueError('El tema va con el id de uno que exista (ver_temas).')
     css = datos.get('css') or ''
     if not isinstance(css, str) or len(css) > MAX_CSS:
         raise ValueError(f'El CSS tiene que ser un texto de hasta {MAX_CSS} caracteres.')
     return {'id': pid or secrets.token_hex(4), 'nombre': nombre, 'formato': formato, 'piezas': limpias, 'css': css,
-            'actualizado': time.time()}
+            **({'tema': tema} if tema else {}), 'actualizado': time.time()}
 
 
 def guardar(datos):
@@ -220,6 +226,57 @@ def guardar_textos(textos):
             json.dump(limpio, f, ensure_ascii=False, indent=1)
         os.replace(tmp, TEXTOS)
     return limpio
+
+
+def leer_temas():
+    try:
+        with open(TEMAS, encoding='utf-8') as f:
+            lista = json.load(f)
+        return lista if isinstance(lista, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def tema(t, i=0):
+    """Un tema revisado. Uno sin id (recién creado o importado) recibe uno nuevo."""
+    if not isinstance(t, dict):
+        raise ValueError('Cada tema va como un objeto: {"nombre": "Mi marca", "colores": {...}, "letra": "Anton"}.')
+    nombre = str(t.get('nombre') or '').strip()[:40]
+    if not nombre:
+        raise ValueError(f'Ponele un nombre al tema {i + 1}.')
+    colores = t.get('colores')
+    if not isinstance(colores, dict):
+        raise ValueError(f'El tema "{nombre}" necesita sus colores: {", ".join(COLORES_TEMA)}.')
+    limpio = {}
+    for c in COLORES_TEMA:
+        v = colores.get(c)
+        if not isinstance(v, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', v):
+            raise ValueError(f'El color "{c}" del tema "{nombre}" es un color como #8b5cf6.')
+        limpio[c] = v.lower()
+    letra = str(t.get('letra') or '').strip()
+    if not re.fullmatch(r'[A-Za-z0-9 ]{0,60}', letra):
+        raise ValueError(f'La letra del tema "{nombre}" es el nombre de una fuente de Google: letras, números y espacios.')
+    tid = str(t.get('id') or '')
+    if tid and not re.fullmatch(r'[a-z0-9]{1,16}', tid):
+        tid = ''
+    return {'id': tid or secrets.token_hex(4), 'nombre': nombre, 'colores': limpio, 'letra': letra}
+
+
+def guardar_temas(lista):
+    """Reemplaza todos los temas. Las pantallas eligen el suyo por id."""
+    if not isinstance(lista, list):
+        raise ValueError('Los temas van como una lista.')
+    if len(lista) > MAX_TEMAS:
+        raise ValueError(f'Podés tener hasta {MAX_TEMAS} temas.')
+    limpios = [tema(t, i) for i, t in enumerate(lista)]
+    if len({t['id'] for t in limpios}) != len(limpios):
+        raise ValueError('Hay dos temas con el mismo id.')
+    with candado:
+        tmp = TEMAS + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(limpios, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, TEMAS)
+    return limpios
 
 
 def contar(apoyos, desde):
