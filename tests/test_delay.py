@@ -16,8 +16,16 @@ import time
 HERE = _os.path.join(_RAIZ, 'streamkit')
 import delay  # noqa: E402
 
+# sin OBS transmitiendo, el delay no arranca: si no, el video de relleno sale solo a las plataformas
+b = delay.Bridge({'delay_seconds': 1}, 'ffmpeg', [(9, 0, b'v', 'key'), (9, 33, b'v', 'frame')])
+b.request('delay')
+assert b.step(0.0) == [] and b.mode == 'stream' and not b.delay
+b.request('toggle')
+assert b.step(0.1) == [] and b.mode == 'stream'
+
 # OBS corta mientras pasa el video: el puente tiene que cerrar Twitch, no repetir el video para siempre
 b = delay.Bridge({'delay_seconds': 1}, 'ffmpeg', [(9, 0, b'v', 'key'), (9, 33, b'v', 'frame')])
+b.obs_connected = True
 b.request('delay')
 b.step(0.0)
 b.buf.append((0.5, 0, 0, b'', 'end'))
@@ -25,6 +33,7 @@ assert b.mode == 'filler' and any(t[3] == 'end' for t in b.step(10.0)) and b.mod
 
 # modo repetir: al activar vuelve al cuadro clave más nuevo con al menos 3 s y sale de ahí, sin relleno
 b = delay.Bridge({'delay_seconds': 3, 'filler_mode': 'rewind'}, 'ffmpeg', [])
+b.obs_connected = True
 for i in range(10):  # 10 s de OBS, un cuadro clave por segundo
     b.buf.append((float(i), 9, i * 1000, b'v', 'key'))
     b.step(float(i))

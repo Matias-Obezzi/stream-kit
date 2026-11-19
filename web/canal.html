@@ -20,11 +20,19 @@
         Twitch y Kick no dejan que un moderador cambie el título.</li>
       <li>Escribí el título, buscá la categoría y revisá que en las dos plataformas haya quedado la misma.</li>
       <li>Tocá <b>Cambiar en las dos</b>, o destildá una para cambiar solo la otra.</li>
+      <li>Si repetís el mismo título y la misma categoría, guardalos como <b>preset</b>: con un toque se cargan en el formulario.</li>
     </ol>
   </details>
   <section class="card">
     <h2>Cómo está ahora</h2>
     <ul class="lineas" id="ahora"><li><span class="dot medio">Leyendo Twitch y Kick…</span></li></ul>
+  </section>
+
+  <section class="card">
+    <h2>Presets</h2>
+    <div class="presets" id="presets"></div>
+    <p class="hint" id="sin-presets">Todavía no hay. Armá el título y la categoría abajo y guardalos con un nombre, por
+      ejemplo «Ranked» o «Torneo»: después los cargás con un toque.</p>
   </section>
 
   <section class="card">
@@ -56,6 +64,11 @@
     <div class="row" style="margin-top:16px">
       <label class="switch"><input type="checkbox" id="p-twitch" checked> Twitch</label>
       <label class="switch"><input type="checkbox" id="p-kick" checked> Kick</label>
+    </div>
+
+    <div class="row" style="margin-top:16px">
+      <label class="grow">Guardar esto como preset<input id="preset-nombre" maxlength="40" placeholder="Nombre del preset" autocomplete="off"></label>
+      <button id="preset-guardar" class="ghost" type="button">Guardar preset</button>
     </div>
   </section>
 
@@ -151,7 +164,58 @@ $('guardar').onclick = async () => {
   mensaje(malas.length ? malas.map(p => d[p].error).join(' · ') : `Listo: cambiado en ${elegidas.map(p => NOMBRES[p]).join(' y ')}.`, malas.length > 0);
 };
 $('releer').onclick = leer;
+
+// presets: cargan el formulario; para cambiar el canal igual hay que tocar el botón de abajo
+let lista = [];
+function pintarPresets() {
+  $('sin-presets').hidden = lista.length > 0;
+  $('presets').replaceChildren(...lista.map(p => {
+    const caja = document.createElement('span'), cargar = document.createElement('button'), borrar = document.createElement('button');
+    caja.className = 'preset';
+    cargar.type = borrar.type = 'button';
+    cargar.textContent = p.nombre;
+    cargar.title = p.titulo;
+    cargar.onclick = () => {
+      $('titulo').value = p.titulo;
+      $('idioma').value = p.idioma;
+      $('etiquetas').value = p.etiquetas.join(', ');
+      for (const pl of ['twitch', 'kick']) { const c = p.categorias[pl]; opciones(pl, c ? [c] : [], c ? c.id : ''); }
+      $('preset-nombre').value = p.nombre;
+      contar();
+      mensaje(`Cargado «${p.nombre}»: revisalo y tocá el botón de abajo para ponerlo en el canal.`);
+      $('guardar').scrollIntoView({ block: 'nearest' });
+    };
+    borrar.textContent = '×';
+    borrar.className = 'quitar';
+    borrar.title = borrar.ariaLabel = 'Borrar el preset ' + p.nombre;
+    borrar.onclick = async () => {
+      if (!confirm(`¿Borrar el preset «${p.nombre}»?`)) return;
+      const r = await post('/api/canal/presets/borrar', JSON.stringify({ nombre: p.nombre }));
+      if (r.ok) { lista = await r.json(); pintarPresets(); }
+    };
+    caja.append(cargar, borrar);
+    return caja;
+  }));
+}
+$('preset-guardar').onclick = async () => {
+  const categorias = {};
+  for (const p of ['twitch', 'kick']) {
+    const sel = $('cat-' + p);  // con «Dejar la que está», el preset se lleva la que tiene puesta ahora
+    if (sel.value) categorias[p] = { id: sel.value, nombre: sel.selectedOptions[0].text };
+    else if (conectada(p) && actual[p].categoria.id) categorias[p] = actual[p].categoria;
+  }
+  const r = await post('/api/canal/presets/guardar', JSON.stringify({
+    nombre: $('preset-nombre').value, titulo: $('titulo').value, idioma: $('idioma').value,
+    etiquetas: $('etiquetas').value.split(',').map(e => e.trim()).filter(Boolean), categorias,
+  }));
+  const d = await r.json();
+  if (!r.ok) return mensaje(d.error, true);
+  lista = d; pintarPresets();
+  mensaje(`Preset «${$('preset-nombre').value.trim()}» guardado.` + (Object.keys(categorias).length ? '' : ' Sin categoría: al cargarlo deja la que esté.'));
+};
+fetch('/api/canal/presets').then(r => r.json()).then(d => { lista = d; pintarPresets(); }).catch(() => {});
 leer();
 </script>
+<script src="/nav.js"></script>
 </body>
 </html>

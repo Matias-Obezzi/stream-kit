@@ -177,7 +177,8 @@ async function tick() {
   $('pill').className = 'pill ' + s.mode;
   $('pill').textContent = s.mode === 'live' ? 'EN VIVO · sin delay'
     : s.mode === 'filler' ? `ACTIVANDO DELAY · faltan ${s.filler_left} s` : `EN DIFERIDO · ${s.delay} s`;
-  $('on').disabled = s.mode !== 'live';
+  $('on').disabled = s.mode !== 'live' || !s.obs;  // sin OBS transmitiendo no hay nada que demorar
+  $('on').title = s.obs ? '' : 'Se activa cuando OBS está transmitiendo';
   $('off').disabled = s.mode === 'live';
   $('obs').classList.toggle('on', s.obs);
   $('sending').classList.toggle('on', s.sending);
@@ -234,5 +235,6 @@ $('off').onclick = () => post('/api/live');
 tick(); setInterval(tick, 1000);
 snaps();
 </script>
+<script src="/nav.js"></script>
 </body>
 </html>

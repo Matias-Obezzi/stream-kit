@@ -10,13 +10,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from rutas import BOT, config as ruta_config
+from rutas import BOT, DATOS, config as ruta_config
 
 CONFIG = ruta_config(os.path.join('bot', 'config.json'))
 TOKEN_TWITCH = os.path.join(BOT, 'token-canal.json')  # no compartir: con esto se cambia tu canal
 TOKEN_KICK = os.path.join(BOT, 'token-canal-kick.json')
 IDIOMAS = ('es', 'en', 'pt', 'other')  # Twitch acepta más, pero estos son los que tienen sentido acá
 LARGO_TITULO = 140  # el máximo de Twitch; Kick acepta eso también
+PRESETS = os.path.join(DATOS, 'presets-canal.json')
+MAX_PRESETS = 30
 candado = threading.Lock()  # los refresh token son de un solo uso: dos pedidos a la vez no pueden refrescar juntos
 FALTA = {'twitch': 'Falta conectar tu cuenta de Twitch: andá a Configuración',
          'kick': 'Falta conectar tu cuenta de Kick: andá a Configuración'}
@@ -191,3 +193,37 @@ def guardar(datos):
         except (OSError, ValueError, KeyError) as e:
             r['kick'] = {'ok': False, 'error': motivo('kick', e)}
     return r
+
+
+def presets():
+    lista = leer_json(PRESETS) if os.path.exists(PRESETS) else []
+    return lista if isinstance(lista, list) else []
+
+
+def guardar_preset(datos):
+    """Guarda (o reemplaza, si ya hay uno con ese nombre) un preset de título, categoría, idioma y etiquetas."""
+    nombre = datos.get('nombre') if isinstance(datos, dict) else None
+    if not isinstance(nombre, str) or not 1 <= len(nombre.strip()) <= 40:
+        raise ValueError('El preset necesita un nombre de hasta 40 caracteres.')
+    categorias = {}
+    if not isinstance(datos.get('categorias') or {}, dict):
+        raise ValueError('Pedido inválido.')
+    for p, c in (datos.get('categorias') or {}).items():
+        if p not in ('twitch', 'kick') or not c:
+            continue
+        if not isinstance(c, dict) or not isinstance(c.get('nombre'), str):
+            raise ValueError(f'Categoría inválida en {p}.')
+        categorias[p] = {'id': str(c.get('id')), 'nombre': c['nombre'][:100]}
+    # las mismas reglas que al cambiar el canal: un preset que no se puede aplicar no sirve
+    titulo, idioma, etiquetas, _, _ = validar({**datos, 'plataformas': ['twitch', 'kick'],
+                                                'categorias': {p: c['id'] for p, c in categorias.items()}})
+    preset = {'nombre': nombre.strip(), 'titulo': titulo, 'idioma': idioma, 'etiquetas': etiquetas, 'categorias': categorias}
+    lista = [x for x in presets() if x.get('nombre') != preset['nombre']]
+    if len(lista) >= MAX_PRESETS:
+        raise ValueError(f'Hasta {MAX_PRESETS} presets: borrá alguno.')
+    guardar_json(PRESETS, lista + [preset])
+    return preset
+
+
+def borrar_preset(nombre):
+    guardar_json(PRESETS, [x for x in presets() if x.get('nombre') != nombre])

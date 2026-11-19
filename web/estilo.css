@@ -155,3 +155,28 @@ button.pill:hover { outline: 1px solid var(--muted); }
 .quienes h2 { font-size: 15px; margin: 8px 0 4px; }
 .quienes p { margin: 0 0 6px; overflow-wrap: anywhere; }
 .emote { height: 1.75em; vertical-align: middle; margin: -0.25em 0; }
+
+/* barra de estado arriba y menú de páginas abajo (nav.js) */
+.con-nav { --alto-estado: 38px; --alto-nav: 58px; padding: var(--alto-estado) 0 calc(var(--alto-nav) + env(safe-area-inset-bottom)); }
+.con-nav .volver { display: none; }
+.con-nav .barra { bottom: calc(var(--alto-nav) + env(safe-area-inset-bottom)); }
+.estado-fijo { position: fixed; z-index: 50; top: 0; left: 0; right: 0; height: var(--alto-estado); display: flex; align-items: center;
+               gap: 14px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; white-space: nowrap;
+               background: var(--card); border-bottom: 1px solid var(--line); font-size: 13px; }
+.estado-fijo .pill { padding: 3px 10px; font-size: 12px; flex: none; }
+.estado-fijo .viendo { color: var(--muted); }
+.nav-abajo { position: fixed; z-index: 50; bottom: 0; left: 0; right: 0; display: flex; justify-content: center;
+             padding-bottom: env(safe-area-inset-bottom); background: var(--card); border-top: 1px solid var(--line); }
+.nav-abajo a { flex: 1; max-width: 110px; height: var(--alto-nav); display: grid; place-content: center; justify-items: center; gap: 3px;
+               color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600; }
+.nav-abajo a:hover { color: var(--text); }
+.nav-abajo a[aria-current=page] { color: var(--accent); }
+.nav-abajo svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 420px) { .con-nav { --alto-nav: 46px; } .nav-abajo span { display: none; } }
+
+/* presets del título */
+.presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.preset { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.preset button { background: transparent; color: var(--text); border-radius: 0; padding: 7px 14px; }
+.preset button:hover { background: var(--line); }
+.preset .quitar { color: var(--muted); padding: 7px 12px 7px 8px; }

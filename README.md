@@ -12,12 +12,14 @@ Herramientas para streamear en **Twitch y Kick** desde Windows, todo en tu PC, s
 - **Pantallas para OBS**: armás cada escena en un lienzo, arrastrando piezas (chat, alertas, marcos de ventana,
   textos, título del stream, espectadores, metas, último seguidor, cuenta regresiva y lluvia de emojis), y la sumás a
   OBS con un solo link.
-- **Título, categoría y etiquetas** cambiados de una vez en Twitch y Kick.
+- **Título, categoría y etiquetas** cambiados de una vez en Twitch y Kick, con presets para cargarlos con un toque.
 - **Consumo**: cuánta CPU, memoria y red usa cada parte (el delay, el bot, cada envío a una plataforma).
 - **Se configura solo**: un botón deja OBS listo, otros suman el panel y el chat adentro de OBS, y otro instala la tecla
   de delay en Stream Deck o StreamDock.
 
-Todo se maneja desde una web local (http://127.0.0.1:8080), con un tutorial en cada pantalla.
+Todo se maneja desde una web local (http://127.0.0.1:8080), con un tutorial en cada pantalla. Arriba siempre se ve el
+estado (en vivo, delay, OBS, cada plataforma, el bot y cuántos miran) y abajo hay un menú para pasar de una pantalla
+a otra, que entra también en un panel angosto de OBS.
 
 ## Instalar
 

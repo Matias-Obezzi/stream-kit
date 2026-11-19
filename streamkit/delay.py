@@ -491,6 +491,8 @@ class Bridge:
         if want == 'delay':
             if self.mode != 'stream' or self.delay:
                 print('El delay ya está activo.', flush=True)
+            elif not self.obs_connected:  # sin esto el video de relleno salía a las plataformas sin estar en stream
+                print('OBS no está transmitiendo: el delay no se activa.', flush=True)
             elif not rewind:
                 self.start_filler(now, out)
                 print(f"DELAY ACTIVANDO: mostrando el video ({n} s)", flush=True)
@@ -860,6 +862,8 @@ def panel(bridge, cfg_path):
                                                    'dock_chat': f'http://127.0.0.1:{port}/chat' in urls}).encode())
             if path == '/api/canal':
                 return self.reply(200, json.dumps(canal.leer()).encode())
+            if path == '/api/canal/presets':
+                return self.reply(200, json.dumps(canal.presets()).encode())
             if path == '/api/canal/buscar':
                 return self.reply(200, json.dumps(canal.buscar(unquote(query[2:]) if query.startswith('q=') else '')).encode())
             if path == '/api/eventos':
@@ -872,7 +876,7 @@ def panel(bridge, cfg_path):
                     return self.reply(200, (f.read() + pantallas.referencia()).encode(), 'text/markdown; charset=utf-8')
             if path == '/estilo.css':
                 return self.page('estilo.css', 'text/css; charset=utf-8')
-            if path in ('/plataformas.js', '/emotes.js'):
+            if path in ('/plataformas.js', '/emotes.js', '/nav.js'):
                 return self.page(path[1:], 'text/javascript; charset=utf-8')
             if path == '/piezas.js':  # con su esquema adelante: así carga de una vez, sin pedir otro archivo
                 with open(os.path.join(WEB, 'piezas.json'), 'rb') as f, open(os.path.join(WEB, 'piezas.js'), 'rb') as g:
@@ -948,6 +952,15 @@ def panel(bridge, cfg_path):
                 try:
                     return self.reply(200, json.dumps(canal.guardar(s)).encode())
                 except ValueError as e:
+                    return self.error(str(e))
+            if path in ('/api/canal/presets/guardar', '/api/canal/presets/borrar'):
+                try:
+                    if path.endswith('borrar'):
+                        canal.borrar_preset(s.get('nombre'))
+                    else:
+                        canal.guardar_preset(s)
+                    return self.reply(200, json.dumps(canal.presets()).encode())
+                except (OSError, ValueError) as e:
                     return self.error(str(e))
             if path in ('/api/pantallas/guardar', '/api/pantallas/borrar'):
                 try:

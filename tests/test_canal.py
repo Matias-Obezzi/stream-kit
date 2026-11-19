@@ -84,4 +84,25 @@ assert 'plataforma' in rechaza(plataformas=['youtube'])
 assert 'Categoría' in rechaza(categorias={'twitch': '1; drop'})
 assert not pedidos, 'nada salió a internet'
 assert c.validar({**datos, 'etiquetas': ['Ñandú', 'Valorant2']})[2] == ['Ñandú', 'Valorant2'], 'tildes y números sí'
+
+# presets: se guardan con las mismas reglas, el mismo nombre reemplaza
+assert c.presets() == []
+pre = {'nombre': 'Ranked', 'titulo': 'Rankeds', 'idioma': 'es', 'etiquetas': ['Argentina'],
+       'categorias': {'twitch': {'id': '516575', 'nombre': 'VALORANT'}, 'kick': ''}}
+c.guardar_preset(pre)
+c.guardar_preset({**pre, 'titulo': 'Rankeds 2'})
+assert [(p['nombre'], p['titulo'], list(p['categorias'])) for p in c.presets()] == [('Ranked', 'Rankeds 2', ['twitch'])]
+def rechaza_preset(**k):
+    try:
+        c.guardar_preset({**pre, **k})
+    except ValueError as e:
+        return str(e)
+    raise AssertionError(f'aceptó {k}')
+assert 'nombre' in rechaza_preset(nombre=' ')
+assert 'título' in rechaza_preset(titulo='')
+assert 'Categoría' in rechaza_preset(categorias={'twitch': {'id': 'x', 'nombre': 'a'}})
+assert 'inválido' in rechaza_preset(categorias=['twitch'])
+c.borrar_preset('Ranked')
+assert c.presets() == []
+assert not pedidos, 'nada salió a internet'
 print('ok')
