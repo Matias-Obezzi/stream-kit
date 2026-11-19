@@ -2,7 +2,7 @@
 
 Deja dist/StreamKit/ (la carpeta del programa) y dist/StreamKit-<versión>-windows.zip, listo para subir como release:
   gh release create v<versión> dist/StreamKit-<versión>-windows.zip --title "Stream Kit <versión>" --notes "..."
-Necesita PyInstaller: python -m pip install pyinstaller
+Necesita PyInstaller (python -m pip install pyinstaller) y Node, para armar el panel de ui/.
 """
 import hashlib
 import json
@@ -29,8 +29,18 @@ def huella_nucleo():
     return h.hexdigest()[:16]
 
 
+def panel():
+    """Arma el panel (ui/, React) en web/app, que va adentro del .exe con el resto de web/."""
+    ui = os.path.join(AQUI, 'ui')
+    npm = shutil.which('npm') or 'npm'
+    if not os.path.isdir(os.path.join(ui, 'node_modules')):
+        subprocess.run([npm, 'ci', '--no-audit', '--no-fund'], cwd=ui, check=True)
+    subprocess.run([npm, 'run', 'build'], cwd=ui, check=True)
+
+
 def main():
     os.chdir(AQUI)
+    panel()
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--windowed', '--name', 'StreamKit',
                     '--icon', os.path.join(AQUI, 'recursos', 'icons', 'on.ico'), '--paths', os.path.join(AQUI, 'streamkit'), '--distpath', DIST, '--workpath', os.path.join('build', 'pyinstaller'),
                     '--specpath', 'build', *[f'--add-data={os.path.join(AQUI, origen)}{os.pathsep}{destino}' for origen, destino in DATOS],

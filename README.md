@@ -23,8 +23,19 @@ a otra, que entra también en un panel angosto de OBS.
 
 La barra también muestra lo que manda OBS y lo que sale a cada plataforma (Mb/s), y el porcentaje de paquetes que
 la PC tuvo que reenviar. Si la subida no da abasto, la plataforma se va atrasando y lo dice ("8 s atrás"); a los 10 s
-Stream Kit tira lo atrasado para que no quede cada vez más lejos del vivo, y la imagen salta ("saltó"). Si lo ves
-seguido, bajá el bitrate en OBS o apagá una plataforma.
+Stream Kit tira lo atrasado para que no quede cada vez más lejos del vivo, y la imagen salta ("saltó"): el panel lo
+avisa con un cartel y un sonido.
+
+Si la subida no da para todas al mismo bitrate:
+
+- **Prueba de subida** (en Delay, sin stream): manda 20 s a Twitch en su modo de prueba, que no sale en vivo, mide
+  cuánto sube tu conexión ese día y te dice qué bitrate usar en OBS según cuántas plataformas tengas activas.
+- **Bitrate propio por plataforma** (en Delay): esa plataforma se recomprime con la placa de video (NVIDIA, Intel o
+  AMD; si no hay, con el procesador) y las demás siguen con lo que manda OBS. Por ejemplo, Twitch a 8000 y Kick a 5000.
+- **Consumo** guarda la red de los últimos 30 minutos con stream: bitrate de OBS y de cada plataforma, atraso,
+  pérdida de paquetes y cada salto, para ver cuándo empezó un problema.
+
+El panel se ve en un panel angosto de OBS (menú abajo) y en pantalla grande (menú al costado, en columnas).
 
 ## Instalar
 
@@ -147,17 +158,22 @@ al lado, `STREAMKIT_PUERTOS` cambia la base de los internos (salvo el 47614 del 
 
 ## Desde el código fuente
 
-Necesita Python 3.11 o más nuevo y ffmpeg. No usa dependencias.
+Necesita Python 3.11 o más nuevo y ffmpeg; Python no usa dependencias. El panel está en `ui/` (React con
+componentes de [uiness](https://uiness.vercel.app)) y se arma una vez con Node 20 o más nuevo:
 
 ```
+cd ui && npm install && npm run build && cd ..
 pythonw app.py
 ```
+
+Para cambiar el panel con recarga al instante: una copia de prueba con `panel_port` 8091 y `npm run dev` en `ui/`.
 
 | Carpeta | Qué tiene |
 | --- | --- |
 | `app.py` | Lo que arranca todo: el guardián, el núcleo, la web o el bot según la opción |
 | `streamkit/` | El código: `delay.py` (el núcleo: OBS, delay y plataformas), `panel.py` (la web), `chatbot.py` (el bot), `guardian.py`, `versiones.py` (actualizar), `cuentas.py` (claves y logins), `canal.py` (título), `pantallas.py`, `mcp.py`, `obs.py`, `deck.py`, `metricas.py` |
-| `web/` | Las pantallas del panel |
+| `ui/` | El panel (React + uiness): una página por pantalla en `ui/src/paginas`. `npm run build` lo deja en `web/app` |
+| `web/` | Lo que usa OBS como fuente de navegador (`pantalla.html`, `piezas.js`) y los scripts compartidos |
 | `recursos/` | Íconos, el botón de Stream Deck y StreamDock, y las configs de ejemplo |
 | `tests/` | Las pruebas |
 | `datos/` | Tu config, tus sesiones y los logs cuando corrés desde el código. No se sube |
@@ -166,7 +182,7 @@ Pruebas, sin internet y sin tocar tu config ni tu OBS: `python tests/test_chatbo
 `test_panel`, `test_pantallas`, `test_mcp`, `test_canal`, `test_versiones`, `test_metricas`, `test_obs`, `test_deck` y `test_delay` (este último simula OBS durante unos
 minutos).
 
-Para armar el .exe en tu PC: `python -m pip install pyinstaller` y `python build.py`. Deja el zip en `dist/`, listo
+Para armar el .exe en tu PC: `python -m pip install pyinstaller` y `python build.py` (arma también el panel con npm). Deja el zip en `dist/`, listo
 para subir como release con `gh release create`.
 
 ## Licencia

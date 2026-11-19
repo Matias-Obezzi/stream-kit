@@ -130,6 +130,32 @@ def dest_url(d):
     return url.rstrip('/') + '/' + key if key else url
 
 
+_encoder = {}
+
+
+def encoder_h264(ffmpeg):
+    """El codificador para recomprimir una plataforma: la placa de video si hay (NVIDIA, Intel, AMD), si no el CPU."""
+    if ffmpeg not in _encoder:
+        _encoder[ffmpeg] = 'libx264'
+        for enc in ('h264_nvenc', 'h264_qsv', 'h264_amf'):
+            r = subprocess.run([ffmpeg, '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=s=256x144:d=0.2',
+                                '-c:v', enc, '-f', 'null', '-'], stdin=subprocess.DEVNULL, capture_output=True,
+                               creationflags=NO_WINDOW, timeout=20)
+            if r.returncode == 0:
+                _encoder[ffmpeg] = enc
+                break
+    return _encoder[ffmpeg]
+
+
+def opciones_video(ffmpeg, kbps):
+    """-c:v para mandar a kbps propios: CBR con un cuadro clave cada 2 s, lo que piden Twitch, Kick y YouTube."""
+    enc = encoder_h264(ffmpeg)
+    rc = {'h264_nvenc': ['-preset', 'p4', '-rc', 'cbr'], 'h264_qsv': ['-preset', 'faster'],
+          'h264_amf': ['-rc', 'cbr', '-quality', 'speed'], 'libx264': ['-preset', 'veryfast', '-tune', 'zerolatency']}[enc]
+    return ['-c:v', enc, *rc, '-b:v', f'{kbps}k', '-maxrate', f'{kbps}k', '-bufsize', f'{kbps * 2}k',
+            '-force_key_frames', 'expr:gte(t,n_forced*2)', '-pix_fmt', 'yuv420p']
+
+
 def saved_filler(cfg):
     """El video de relleno que ya está armado: tras una caída no se espera a codificarlo de nuevo, con el stream cortado."""
     if cfg.get('filler_mode') == 'rewind':
@@ -191,8 +217,12 @@ def make_filler(cfg, ffmpeg):
 class Output:
     """Un destino (Twitch, YouTube, Kick...): su propio ffmpeg y su cola, así uno lento o caído no frena a los demás."""
 
-    def __init__(self, ffmpeg, url):
+    def __init__(self, ffmpeg, url, bitrate=0):
         self.ffmpeg, self.url = ffmpeg, url
+        self.bitrate = bitrate  # kbps propios: se recomprime el video (0: se manda tal cual llega de OBS)
+        self.salida = 0  # bytes que salieron de verdad a la plataforma cuando se recomprime (los cuenta ffmpeg)
+        if bitrate:  # saber qué codificador hay tarda: que no frene al hilo del stream cuando arranque
+            threading.Thread(target=encoder_h264, args=(ffmpeg,), daemon=True).start()
         self.vod_track = 'twitch.tv' in url  # la pista del VOD es cosa de Twitch: a los demás no se les manda
         self.proc = self.q = None
         self.error = ''
@@ -215,7 +245,7 @@ class Output:
         if self.closed or (extra and not self.vod_track):
             return
         if not self.running():
-            if k != 'key' or time.monotonic() < self.retry_at:
+            if k != 'key' or time.monotonic() < self.retry_at or (self.bitrate and self.ffmpeg not in _encoder):
                 return
             self._start(headers, ts)
         elif self.need_key:
@@ -262,12 +292,25 @@ class Output:
                                          if self.vod_track or not extra_track(key[0], d)))
         # el video siempre primero: con el audio primero, Kick corta cada 18 s. Twitch lleva todos los audios (el VOD)
         maps = ['-map', '0:v:0', '-map', '0:a?' if self.vod_track else '0:a:0?']
-        self.proc = subprocess.Popen([self.ffmpeg, '-hide_banner', '-loglevel', 'error', '-f', 'flv', '-i', 'pipe:0',
-                                      *maps, '-c', 'copy', '-f', 'flv', '-y', self.url],
-                                     stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                     bufsize=0, creationflags=NO_WINDOW)
+        if self.bitrate:  # se decodifica y se vuelve a codificar solo el video; el audio va tal cual
+            entrada = ['-hwaccel', 'auto', '-f', 'flv', '-i', 'pipe:0']
+            codec = [*opciones_video(self.ffmpeg, self.bitrate), '-c:a', 'copy', '-progress', 'pipe:1', '-stats_period', '1']
+        else:
+            entrada, codec = ['-f', 'flv', '-i', 'pipe:0'], ['-c', 'copy']
+        self.salida = 0
+        self.proc = subprocess.Popen([self.ffmpeg, '-hide_banner', '-loglevel', 'error', *entrada,
+                                      *maps, *codec, '-f', 'flv', '-y', self.url],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE if self.bitrate else subprocess.DEVNULL,
+                                     stderr=subprocess.PIPE, bufsize=0, creationflags=NO_WINDOW)
         threading.Thread(target=self._write, args=(self.proc, self.q), daemon=True).start()
         threading.Thread(target=self._errors, args=(self.proc,), daemon=True).start()
+        if self.bitrate:
+            threading.Thread(target=self._progreso, args=(self.proc,), daemon=True).start()
+
+    def _progreso(self, proc):
+        for linea in proc.stdout:  # -progress: total_size=<bytes que salieron>
+            if linea.startswith(b'total_size=') and linea[11:].strip().isdigit():
+                self.salida = int(linea[11:])
 
     def _write(self, proc, q):
         try:
@@ -394,6 +437,9 @@ class Bridge:
         self.recibidos = 0  # bytes que llegaron de OBS, para /metricas
         self.entrada_kbps = 0  # lo que llegó de OBS en el último segundo
         self.perdida = None  # % de paquetes TCP reenviados en toda la PC (None: sin datos)
+        self.historial = deque(maxlen=1800)  # una muestra por segundo con stream: 30 min para el gráfico
+        self.saltos, self.saltos_vistos = deque(maxlen=300), {}  # (hora, id del destino) de cada vez que se tiró lo atrasado
+        self.prueba = {'estado': ''}  # la prueba de subida
         self.outputs = {}  # id del destino -> Output
         self.sync_outputs()
         # para el panel
@@ -417,11 +463,11 @@ class Bridge:
         want = {d['id']: d for d in self.cfg.get('destinations', []) if d.get('enabled', True)}
         outs = dict(self.outputs)
         for i in list(outs):
-            if i not in want or outs[i].url != dest_url(want[i]):
+            if i not in want or outs[i].url != dest_url(want[i]) or outs[i].bitrate != want[i].get('bitrate', 0):
                 outs.pop(i).close()
         for i, d in want.items():
             if i not in outs:
-                outs[i] = Output(self.ffmpeg, dest_url(d))
+                outs[i] = Output(self.ffmpeg, dest_url(d), d.get('bitrate', 0))
         self.outputs = outs  # se reemplaza entero: el hilo que envía itera sobre una copia
 
     def medir(self, cada=1.0, tcp=tcp_segmentos):
@@ -434,8 +480,11 @@ class Bridge:
             antes_in = self.recibidos
             entradas.append(self.entrada_kbps)  # el límite va con el pico: un bache de OBS no hace tirar de más
             for o in list(self.outputs.values()):
-                o.kbps = round((o.enviados - antes_out.get(id(o), o.enviados)) * 8 / 1000 / cada)
-                antes_out[id(o)] = o.enviados
+                hecho = o.salida if o.bitrate else o.enviados  # recomprimido: lo que sale, no lo que entra
+                # promedio de los últimos 5 s: ffmpeg cuenta lo que sale de a bloques y un segundo solo salta
+                serie = antes_out.setdefault(id(o), deque(maxlen=6))
+                serie.append(hecho)
+                o.kbps = round(max(0, serie[-1] - serie[0]) * 8 / 1000 / (cada * (len(serie) - 1))) if len(serie) > 1 else 0
                 o.limite = max(entradas) * 1000 // 8 * ATRASO_MAXIMO
             ahora = tcp()
             if ahora and antes_tcp:
@@ -443,6 +492,72 @@ class Bridge:
                 salidos = sum(s for s, _ in ventana)
                 self.perdida = round(100 * sum(r for _, r in ventana) / salidos, 2) if salidos > 500 else None
             antes_tcp = ahora
+            salidas = list(self.outputs.items())
+            for i, o in salidas:
+                if o.descartes > self.saltos_vistos.get(id(o), 0):
+                    self.saltos.append((round(time.time()), i))
+                self.saltos_vistos[id(o)] = o.descartes
+            if self.obs_connected or any(o.running() for _, o in salidas):  # sin stream no se guarda nada
+                self.historial.append({'t': round(time.time()), 'in': self.entrada_kbps, 'perdida': self.perdida,
+                                       'd': {i: [o.kbps, round(o.pendiente / max(1, self.entrada_kbps * 125), 1)]
+                                             for i, o in salidas if o.running()}})
+
+    def historia(self):
+        """La red en los últimos 30 min, para el gráfico de Consumo."""
+        return {'muestras': list(self.historial), 'saltos': list(self.saltos),
+                'destinos': {d['id']: d['name'] for d in self.cfg.get('destinations', [])}}
+
+    def probar_subida(self, segundos=20, mbps=25):
+        """Mide cuánto sube la conexión hasta Twitch con su modo de prueba (?bandwidthtest=true: no sale en vivo).
+        Manda ruido a mbps durante segundos y cuenta lo que pasa. Solo sin stream: si no, competiría con él."""
+        with self.cv:
+            if self.prueba.get('estado') == 'probando':
+                raise ValueError('Ya se está probando.')
+            if self.obs_connected or any(o.running() for o in self.outputs.values()):
+                raise ValueError('Probá la subida sin stream: si no, la prueba le quita lugar a la transmisión.')
+            twitch = next((d for d in self.cfg.get('destinations', []) if 'twitch.tv' in d.get('url', '') and d.get('key')), None)
+            if not twitch:
+                raise ValueError('Para probar hace falta Twitch con su clave en Plataformas: la prueba usa su modo sin salir en vivo.')
+            self.prueba = {'estado': 'probando', 'progreso': 0, 'mbps': 0}
+        url = dest_url(twitch) + '?bandwidthtest=true'
+        threading.Thread(target=self._prueba, args=(url, segundos, mbps), daemon=True).start()
+
+    def _prueba(self, url, segundos, mbps):
+        safe = url.rsplit('/', 1)[0]
+        cmd = [self.ffmpeg, '-hide_banner', '-loglevel', 'error', '-re', '-f', 'lavfi', '-i',
+               f'color=s=1280x720:r=30:d={segundos},noise=alls=80:allf=t', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+               '-shortest', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-b:v', f'{mbps}M',
+               '-maxrate', f'{mbps}M', '-bufsize', f'{mbps}M', '-g', '60', '-c:a', 'aac', '-b:a', '128k',
+               '-progress', 'pipe:1', '-stats_period', '1', '-f', 'flv', url]
+        muestras, inicio = [], time.monotonic()
+        try:
+            p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 creationflags=NO_WINDOW | LOW)
+            for linea in p.stdout:
+                if linea.startswith(b'total_size=') and linea[11:].strip().isdigit():
+                    muestras.append((time.monotonic() - inicio, int(linea[11:])))
+                    if len(muestras) > 1:
+                        (t0, b0), (t1, b1) = muestras[-2], muestras[-1]
+                        self.prueba.update(mbps=round((b1 - b0) * 8 / 1e6 / max(t1 - t0, 0.1), 1),
+                                           progreso=min(1, (t1) / segundos))
+                if time.monotonic() - inicio > segundos + 15:  # trabada: no se espera para siempre
+                    p.kill()
+                    break
+            err = p.stderr.read().decode('utf-8', 'replace').replace(url, safe + '/•••')
+            codigo = p.wait()
+            utiles = [m for m in muestras if m[0] >= 5]  # los primeros segundos llenan buffers: no cuentan
+            if len(utiles) < 3:
+                raise ValueError(f'No se pudo medir ({err.strip()[:200] or f"ffmpeg terminó con {codigo}"}).')
+            (t0, b0), (t1, b1) = utiles[0], utiles[-1]
+            total = round((b1 - b0) * 8 / 1e6 / (t1 - t0), 1)
+            activas = max(1, sum(1 for d in self.cfg.get('destinations', []) if d.get('enabled', True)))
+            # tres cuartos de lo medido entre las plataformas activas, como mucho 8000 kbps cada una
+            recomendado = int(min(8000, total * 750 / activas) // 500 * 500)
+            self.prueba = {'estado': 'listo', 'mbps': total, 'tope': total >= mbps * 0.9, 'recomendado': recomendado,
+                           'plataformas': activas, 'hora': time.time(), 'progreso': 1}
+            print(f'Prueba de subida: {total} Mb/s; recomendado {recomendado} kbps por plataforma ({activas}).', flush=True)
+        except (OSError, ValueError) as e:
+            self.prueba = {'estado': 'error', 'error': str(e), 'hora': time.time()}
 
     def files(self):
         if not os.path.isdir(VIDEOS):
@@ -460,7 +575,7 @@ class Bridge:
     def medidas(self, o):
         """Bitrate, segundos atrasados (lo que está en la cola, al ritmo que manda OBS) y saltos de una salida."""
         ritmo = self.entrada_kbps * 1000 / 8
-        return {'kbps': o.kbps, 'atraso': round(o.pendiente / ritmo, 1) if ritmo and o.running() else 0,
+        return {'kbps': o.kbps, 'recomprime': bool(o.bitrate), 'atraso': round(o.pendiente / ritmo, 1) if ritmo and o.running() else 0,
                 'descartes': o.descartes, 'ultimo_descarte': o.ultimo_descarte}
 
     def status(self, full=True):
@@ -476,10 +591,12 @@ class Bridge:
             return s
         cfg = self.cfg
         s['destinations'] = [{'id': d['id'], 'name': d['name'], 'url': d['url'], 'enabled': d.get('enabled', True),
+                              'bitrate': d.get('bitrate', 0),
                               'state': o.state() if (o := self.outputs.get(d['id'])) else 'off',
                               'error': o.error if o else '', **(self.medidas(o) if o else {})}
                              for d in cfg.get('destinations', [])]
         s['red'] = {'entrada_kbps': self.entrada_kbps, 'perdida': self.perdida}
+        s['prueba'] = self.prueba
         s['filler'] = {'mode': cfg.get('filler_mode', 'text'), 'file': os.path.basename(cfg.get('filler_file') or ''),
                        'loops': cfg.get('filler_loops', 1), 'text': cfg.get('filler_text', 'Activando delay'),
                        'seconds': cfg['delay_seconds']}
@@ -834,6 +951,8 @@ def api(bridge, cfg_path, clave, salir):
                 return self.reply(200, jpg, 'image/jpeg') if jpg else self.reply(204, b'')
             if path == '/nucleo/partes':
                 return self.reply(200, json.dumps(partes()).encode())
+            if path == '/api/red/historial':
+                return self.reply(200, json.dumps(bridge.historia()).encode())
             self.reply(404)
 
         def do_POST(self):
@@ -848,6 +967,12 @@ def api(bridge, cfg_path, clave, salir):
                 return self.reply(200)
             if path in ('/api/delay', '/api/live'):
                 bridge.request(path[5:])
+                return self.reply(200)
+            if path == '/api/red/prueba':
+                try:
+                    bridge.probar_subida()
+                except ValueError as e:
+                    return self.error(str(e))
                 return self.reply(200)
             if path == '/nucleo/deck_token':  # para instalar el botón: la clave queda en la config, que es del núcleo
                 if not cfg.get('deck_token'):
@@ -921,6 +1046,14 @@ def api(bridge, cfg_path, clave, salir):
                     dests.remove(d)
                 elif action == 'enable':
                     d['enabled'] = bool(s.get('enabled'))
+                elif action == 'bitrate':  # kbps propios (se recomprime) o 0: lo mismo que manda OBS
+                    try:
+                        kbps = int(s.get('bitrate') or 0)
+                    except (TypeError, ValueError):
+                        return self.error('El bitrate tiene que ser un número.')
+                    if kbps and not 500 <= kbps <= 20000:
+                        return self.error('El bitrate tiene que estar entre 500 y 20000 kbps (o 0: lo que manda OBS).')
+                    d['bitrate'] = kbps
                 elif action == 'update':  # otra clave (o URL) sin quitarla: si estaba transmitiendo, se reconecta solo ese destino
                     url, key = str(s.get('url', d['url'])).strip(), str(s.get('key', '')).strip()
                     if not re.fullmatch(r'rtmps?://\S+', url):

@@ -39,6 +39,32 @@ assert pedir('/api/delay', 'POST')[0] == 200 and b.want == 'delay'
 assert pedir('/api/deck/toggle?mal', 'POST')[0] == 403 and pedir('/api/deck/toggle?boton', 'POST')[0] == 200 and b.want == 'toggle'
 assert json.loads(pedir('/nucleo/deck_token', 'POST')[1]) == {'token': 'boton'}
 
+# bitrate propio por plataforma, historial de la red y prueba de subida
+def mandar(ruta, cuerpo):
+    try:
+        r = urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{delay.PUERTO_NUCLEO}{ruta}', method='POST',
+                                   data=json.dumps(cuerpo).encode(), headers={'X-Nucleo': 'secreto'}), timeout=5)
+        return r.status, json.loads(r.read() or b'{}')
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b'{}')
+codigo, r = mandar('/api/red/prueba', {})
+assert codigo == 400 and 'Twitch' in r['error'], r  # sin Twitch configurado no hay contra qué probar
+assert mandar('/api/destinations/add', {'name': 'Kick', 'url': 'rtmps://kick.test/app', 'key': 'k'})[0] == 200
+kid = json.loads(pedir('/api/state')[1])['destinations'][0]['id']
+assert mandar('/api/destinations/bitrate', {'id': kid, 'bitrate': 300})[0] == 400
+assert mandar('/api/destinations/bitrate', {'id': kid, 'bitrate': 6000})[0] == 200
+d = json.loads(pedir('/api/state')[1])['destinations'][0]
+assert d['bitrate'] == 6000 and b.outputs[kid].bitrate == 6000, d
+assert mandar('/api/destinations/bitrate', {'id': kid, 'bitrate': 0})[0] == 200 and b.outputs[kid].bitrate == 0
+h = json.loads(pedir('/api/red/historial')[1])
+assert h['destinos'] == {kid: 'Kick'} and h['muestras'] == [] and h['saltos'] == []
+b.obs_connected = True
+codigo, r = mandar('/api/red/prueba', {})
+assert codigo == 400 and 'sin stream' in r['error'], r  # con stream no se prueba: competiría
+b.obs_connected = False
+v = delay.opciones_video('ffmpeg', 6000)
+assert v[1] in ('h264_nvenc', 'h264_qsv', 'h264_amf', 'libx264') and '6000k' in v and 'expr:gte(t,n_forced*2)' in v
+
 # sin OBS transmitiendo, el delay no arranca: si no, el video de relleno sale solo a las plataformas
 b = delay.Bridge({'delay_seconds': 1}, 'ffmpeg', [(9, 0, b'v', 'key'), (9, 33, b'v', 'frame')])
 b.request('delay')
@@ -103,7 +129,8 @@ for mode in ('text', 'rewind'):
     tmp = tempfile.mkdtemp()
     outs = [os.path.join(tmp, n) for n in ('twitch.tv.flv', 'otro.flv')]  # solo el de Twitch lleva la pista del VOD
     cfg = json.load(open(os.path.join(_RAIZ, 'recursos', 'ejemplos', 'config.json'), encoding='utf-8'))
-    cfg.update(destinations=[{'id': str(i), 'name': f'archivo {i}', 'url': o, 'key': '', 'enabled': True}
+    cfg.update(destinations=[{'id': str(i), 'name': f'archivo {i}', 'url': o, 'key': '', 'enabled': True,
+                              'bitrate': 800 if i else 0}  # el segundo recomprimido a bitrate propio
                              for i, o in enumerate(outs)],
                filler_mode=mode, filler_text='Ya volvemos\nen un ratito', delay_seconds=8, resolution='640x360',
                fps=30, video_bitrate_kbps=1000, listen_port=19350, panel_port=0, open_panel=False)

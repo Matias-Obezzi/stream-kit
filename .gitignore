@@ -7,3 +7,5 @@ build/
 dist/
 __pycache__/
 *.spec
+# el panel armado (ui/ con npm run build): lo arma build.py
+web/app/

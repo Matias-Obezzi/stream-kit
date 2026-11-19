@@ -30,6 +30,9 @@ from delay import UPLOAD_EXT, VIDEOS, lan_ip
 from rutas import CLAVE_NUCLEO, PUERTO_NUCLEO, RAIZ, RECURSOS, WEB, config as ruta_config
 
 CONFIG = ruta_config('config.json')
+PAGINAS = ('/', '/delay', '/chat', '/canal', '/pantallas', '/bot', '/metricas', '/config')  # las de ui/src/rutas.tsx
+TIPOS = {'.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml',
+         '.woff2': 'font/woff2', '.png': 'image/png', '.webp': 'image/webp'}
 NUCLEO_CAIDO = {'error': 'El núcleo de transmisión no contesta: si se cayó, el guardián lo levanta en unos segundos.'}
 _cfg = {}
 
@@ -137,8 +140,11 @@ def panel():
             return self.reply(codigo, cuerpo, tipo)
 
         def page(self, name, ctype='text/html; charset=utf-8'):
-            with open(os.path.join(WEB, name), 'rb') as f:
-                return self.reply(200, f.read(), ctype)
+            try:
+                with open(os.path.join(WEB, name), 'rb') as f:
+                    return self.reply(200, f.read(), ctype)
+            except FileNotFoundError:  # desde el código sin armar el panel
+                return self.reply(500, 'Falta armar el panel: en ui/, npm install y npm run build.'.encode(), 'text/plain; charset=utf-8')
 
         def error(self, msg):
             return self.reply(400, json.dumps({'error': msg}).encode())
@@ -172,16 +178,6 @@ def panel():
                 return self.end_headers()
             if not self.allowed():
                 return self.reply(403, 'Abrí el link que muestra el panel en la PC.'.encode(), 'text/plain; charset=utf-8')
-            if path == '/':
-                return self.page('inicio.html')
-            if path == '/delay':
-                return self.page('panel.html')
-            if path == '/bot':
-                return self.page('bot.html')
-            if path == '/chat':
-                return self.page('chat.html')
-            if path == '/pantallas':
-                return self.page('pantallas.html')
             if path == '/mcp':  # el MCP solo habla por POST
                 self.send_response(405)
                 self.send_header('Allow', 'POST')
@@ -193,12 +189,16 @@ def panel():
                 return self.reply(200, json.dumps(pantallas.leer()).encode())
             if path == '/api/pantallas/datos':
                 return self.reply(200, json.dumps(pantallas.datos()).encode())
-            if path == '/canal':
-                return self.page('canal.html')
             if path in ('/config', '/api/config') and not self.local():  # claves y sesiones: solo desde esta PC
                 return self.reply(403, 'La configuración solo se abre desde la PC.'.encode(), 'text/plain; charset=utf-8')
-            if path == '/config':
-                return self.page('config.html')
+            if path in PAGINAS:  # el panel (ui/, armado en web/app): la misma página para todas, la ruta la resuelve ella
+                return self.page(os.path.join('app', 'index.html'))
+            if re.fullmatch(r'/assets/[A-Za-z0-9_.-]+', path):  # con hash en el nombre: no cambian nunca
+                tipo = TIPOS.get(os.path.splitext(path)[1])
+                if tipo and os.path.isfile(archivo := os.path.join(WEB, 'app', path.lstrip('/'))):
+                    with open(archivo, 'rb') as f:
+                        return self.reply(200, f.read(), tipo)
+                return self.reply(404)
             if path == '/api/config':
                 return self.reply(200, json.dumps(cuentas.leer()).encode())
             if path == '/api/botonera':
@@ -225,9 +225,7 @@ def panel():
             if path == '/llms.txt':  # la guía para agentes de IA, con la lista de piezas al día
                 with open(os.path.join(RAIZ, 'llms.txt'), encoding='utf-8') as f:
                     return self.reply(200, (f.read() + pantallas.referencia()).encode(), 'text/markdown; charset=utf-8')
-            if path == '/estilo.css':
-                return self.page('estilo.css', 'text/css; charset=utf-8')
-            if path in ('/plataformas.js', '/emotes.js', '/nav.js'):
+            if path in ('/plataformas.js', '/emotes.js'):
                 return self.page(path[1:], 'text/javascript; charset=utf-8')
             if path == '/piezas.js':  # con su esquema adelante: así carga de una vez, sin pedir otro archivo
                 with open(os.path.join(WEB, 'piezas.json'), 'rb') as f, open(os.path.join(WEB, 'piezas.js'), 'rb') as g:
@@ -248,11 +246,9 @@ def panel():
                 return self.reply(200, json.dumps(s).encode())
             if path == '/api/version':
                 return self.reply(200, json.dumps(version_info()).encode())
-            if path == '/metricas':
-                return self.page('metricas.html')
             if path == '/api/metricas':
                 return self.reply(200, json.dumps(medidor.medir(partes())).encode())
-            if path in ('/api/deck', '/snap/in.jpg', '/snap/out.jpg'):
+            if path in ('/api/deck', '/snap/in.jpg', '/snap/out.jpg', '/api/red/historial'):
                 return self.nucleo('GET', path)
             self.reply(404)
 
@@ -268,7 +264,7 @@ def panel():
             if self.headers.get('X-Panel') != '1':
                 return self.reply(403)
             size = int(self.headers.get('Content-Length') or 0)
-            if path in ('/api/delay', '/api/live'):
+            if path in ('/api/delay', '/api/live', '/api/red/prueba'):
                 return self.nucleo('POST', path)
             if path == '/api/upload':
                 name = os.path.basename(unquote(query))
