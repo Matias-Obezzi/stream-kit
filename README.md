@@ -111,9 +111,23 @@ panel de la derecha, los colores y los textos.
 | Último seguidor o sub | El nombre del último que siguió, se suscribió o mandó bits o kicks |
 | Cuenta regresiva | Para la pantalla de "empezando" |
 | Lluvia de emojis | Los emojis y emotes del chat caen por la pantalla |
+| Imagen | Tu logo, un fondo o un GIF: se sube desde el editor (png, jpg, gif o webp) o va con un link https |
 
 Guardá y copiá el link: en OBS, **Fuente → Navegador**, pegalo y poné el mismo tamaño que la pantalla. Lo vacío queda
 transparente. Si después la cambiás y guardás, OBS la actualiza solo en unos segundos.
+
+**Animaciones**: cada pieza elige cómo entra (aparecer, desde un costado, zoom, rebote o abrirse) y cuánto tarda. El
+chat, las alertas y el último seguidor también eligen cómo salen, y se animan en cada mensaje, alerta o cambio. Las
+demás entran cuando carga la pantalla, después de la espera que les pongas: con esperas distintas entran una atrás de
+otra. Para que se repita en cada cambio de escena, en la fuente de OBS tildá **Actualizar navegador cuando la escena se
+activa**. **Probar animación** la muestra en el editor. Con "reducir movimiento" activado en Windows, nada se mueve.
+
+**Letra**: además de las de siempre, cualquier fuente de [Google Fonts](https://fonts.google.com): elegí **De Google
+Fonts** y escribí su nombre (por ejemplo, Bebas Neue).
+
+**Textos compartidos**: lo que cambia seguido y aparece en varias pantallas (el tema del día, el próximo stream) se
+escribe una vez, abajo del lienzo. En una pieza, `{tema}` muestra el texto `tema`: sirve en los textos, el título del
+marco y de la meta, y la etiqueta y el final de la cuenta regresiva. OBS toma los cambios en unos 15 segundos.
 
 **CSS propio**: cada pantalla tiene su CSS, que vale solo adentro de ella y se ve al toque en el editor. Cada pieza
 tiene `data-tipo` (`[data-tipo="chat"]`) y la clase que le pongas en su panel; adentro hay clases como `.pz-mensaje`,

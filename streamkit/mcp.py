@@ -61,6 +61,15 @@ HERRAMIENTAS = [
      'annotations': {'destructiveHint': True, 'idempotentHint': True}},
     {'name': 'borrar_pantalla', 'description': 'Borra una pantalla. En OBS queda vacía. No se puede deshacer.',
      'inputSchema': ID, 'annotations': {'destructiveHint': True}},
+    {'name': 'ver_textos', 'description': 'Los textos compartidos: {"tema": "Ranked"}. Una pieza que diga {tema} en su texto '
+     '(texto, título de marco o de meta, etiqueta o final de la cuenta regresiva) muestra el de "tema", en todas las pantallas.',
+     'inputSchema': NADA, 'annotations': {'readOnlyHint': True}},
+    {'name': 'guardar_textos', 'description': 'Reemplaza todos los textos compartidos (leelos antes con ver_textos para no '
+     'borrar los demás). Nombres en minúsculas con letras, números y _, hasta 30; textos de hasta 300 caracteres. OBS los '
+     'toma en unos 15 segundos.',
+     'inputSchema': {'type': 'object', 'properties': {'textos': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
+                     'required': ['textos']},
+     'annotations': {'destructiveHint': True, 'idempotentHint': True}},
     {'name': 'datos_en_vivo', 'description': 'Lo que muestran las piezas ahora: espectadores, seguidores, títulos y lo '
      'que pasó en este stream (follows, subs, bits y kicks).', 'inputSchema': NADA, 'annotations': {'readOnlyHint': True}},
 ]
@@ -88,6 +97,10 @@ def usar(nombre, args, puerto):
     if nombre == 'borrar_pantalla':
         pantallas.borrar(args.get('id'))
         return {'borrada': args.get('id')}
+    if nombre == 'ver_textos':
+        return pantallas.leer_textos()
+    if nombre == 'guardar_textos':
+        return pantallas.guardar_textos(args.get('textos'))
     if nombre == 'datos_en_vivo':
         return pantallas.datos()
     raise KeyError(nombre)

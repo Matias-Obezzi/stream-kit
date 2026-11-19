@@ -1,4 +1,113 @@
 {
+ "_animacion": {
+  "descripcion": "Opciones de animación que se suman a las piezas que dicen \"animacion\". Las que van y vienen (mensajes del chat, alertas, el último seguidor) usan entrada y salida en cada cambio; las fijas entran cuando carga la pantalla, después de la espera.",
+  "opciones": [
+   {
+    "clave": "entrada",
+    "nombre": "Animación al entrar",
+    "tipo": "elegir",
+    "def": "ninguna",
+    "valores": [
+     [
+      "ninguna",
+      "Ninguna"
+     ],
+     [
+      "aparecer",
+      "Aparecer"
+     ],
+     [
+      "abajo",
+      "Desde abajo"
+     ],
+     [
+      "arriba",
+      "Desde arriba"
+     ],
+     [
+      "izquierda",
+      "Desde la izquierda"
+     ],
+     [
+      "derecha",
+      "Desde la derecha"
+     ],
+     [
+      "zoom",
+      "Zoom"
+     ],
+     [
+      "rebote",
+      "Rebote"
+     ],
+     [
+      "abrir",
+      "Abrirse de izquierda a derecha"
+     ]
+    ]
+   },
+   {
+    "clave": "salida",
+    "nombre": "Animación al salir",
+    "tipo": "elegir",
+    "def": "ninguna",
+    "valores": [
+     [
+      "ninguna",
+      "Ninguna"
+     ],
+     [
+      "aparecer",
+      "Desvanecerse"
+     ],
+     [
+      "abajo",
+      "Hacia abajo"
+     ],
+     [
+      "arriba",
+      "Hacia arriba"
+     ],
+     [
+      "izquierda",
+      "Hacia la izquierda"
+     ],
+     [
+      "derecha",
+      "Hacia la derecha"
+     ],
+     [
+      "zoom",
+      "Achicarse"
+     ],
+     [
+      "rebote",
+      "Rebote"
+     ],
+     [
+      "abrir",
+      "Cerrarse hacia la izquierda"
+     ]
+    ]
+   },
+   {
+    "clave": "velocidad",
+    "nombre": "Duración de la animación (milisegundos)",
+    "tipo": "numero",
+    "def": 400,
+    "min": 100,
+    "max": 3000
+   },
+   {
+    "clave": "retraso",
+    "nombre": "Espera antes de entrar (milisegundos)",
+    "tipo": "numero",
+    "def": 0,
+    "min": 0,
+    "max": 10000
+   }
+  ]
+ },
  "chat": {
   "nombre": "Chat",
   "descripcion": "Los chats de Twitch y Kick juntos, con emotes. Lo que borra o banea un mod se va.",
@@ -34,8 +143,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -107,7 +227,16 @@
     "tipo": "si",
     "def": false
    }
-  ]
+  ],
+  "animacion": [
+   "entrada",
+   "salida",
+   "velocidad"
+  ],
+  "animacion_def": {
+   "entrada": "abajo",
+   "salida": "aparecer"
+  }
  },
  "alertas": {
   "nombre": "Alertas",
@@ -156,8 +285,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -211,7 +351,16 @@
     "tipo": "si",
     "def": true
    }
-  ]
+  ],
+  "animacion": [
+   "entrada",
+   "salida",
+   "velocidad"
+  ],
+  "animacion_def": {
+   "entrada": "abajo",
+   "salida": "aparecer"
+  }
  },
  "marco": {
   "nombre": "Marco de ventana",
@@ -274,8 +423,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -305,6 +465,11 @@
     "min": 0,
     "max": 100
    }
+  ],
+  "animacion": [
+   "entrada",
+   "velocidad",
+   "retraso"
   ]
  },
  "texto": {
@@ -340,8 +505,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -403,6 +579,11 @@
     "tipo": "si",
     "def": false
    }
+  ],
+  "animacion": [
+   "entrada",
+   "velocidad",
+   "retraso"
   ]
  },
  "titulo": {
@@ -448,8 +629,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -511,6 +703,11 @@
     "tipo": "si",
     "def": false
    }
+  ],
+  "animacion": [
+   "entrada",
+   "velocidad",
+   "retraso"
   ]
  },
  "viewers": {
@@ -570,8 +767,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -633,6 +841,11 @@
     "tipo": "si",
     "def": false
    }
+  ],
+  "animacion": [
+   "entrada",
+   "velocidad",
+   "retraso"
   ]
  },
  "meta": {
@@ -730,8 +943,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -769,6 +993,11 @@
     "min": 0,
     "max": 60
    }
+  ],
+  "animacion": [
+   "entrada",
+   "velocidad",
+   "retraso"
   ]
  },
  "lluvia": {
@@ -872,8 +1101,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -935,6 +1175,11 @@
     "tipo": "si",
     "def": false
    }
+  ],
+  "animacion": [
+   "entrada",
+   "salida",
+   "velocidad"
   ]
  },
  "cuenta": {
@@ -984,8 +1229,19 @@
      [
       "serif",
       "Con serifa"
+     ],
+     [
+      "google",
+      "De Google Fonts"
      ]
     ]
+   },
+   {
+    "clave": "fuente_google",
+    "nombre": "Fuente de Google (si elegiste De Google Fonts), por ejemplo Bebas Neue",
+    "tipo": "texto",
+    "def": "",
+    "patron": "[A-Za-z0-9 ]{0,60}"
    },
    {
     "clave": "tamano",
@@ -1047,6 +1303,66 @@
     "tipo": "si",
     "def": false
    }
+  ],
+  "animacion": [
+   "entrada",
+   "velocidad",
+   "retraso"
+  ]
+ },
+ "imagen": {
+  "nombre": "Imagen",
+  "descripcion": "Una imagen o un GIF: tu logo, un fondo, una placa. Se sube desde el editor o va con un link https.",
+  "w": 400,
+  "h": 400,
+  "opciones": [
+   {
+    "clave": "imagen",
+    "nombre": "Imagen",
+    "tipo": "imagen",
+    "def": ""
+   },
+   {
+    "clave": "ajuste",
+    "nombre": "Cómo entra en la caja",
+    "tipo": "elegir",
+    "def": "contener",
+    "valores": [
+     [
+      "contener",
+      "Entera, sin cortar"
+     ],
+     [
+      "cubrir",
+      "Llena la caja (corta lo que sobra)"
+     ],
+     [
+      "estirar",
+      "Estirada"
+     ]
+    ]
+   },
+   {
+    "clave": "opacidad",
+    "nombre": "Opacidad (%)",
+    "tipo": "numero",
+    "def": 100,
+    "min": 0,
+    "max": 100
+   },
+   {
+    "clave": "radio",
+    "nombre": "Bordes redondeados",
+    "tipo": "numero",
+    "def": 0,
+    "min": 0,
+    "max": 500
+   }
+  ],
+  "animacion": [
+   "entrada",
+   "velocidad",
+   "retraso"
   ]
  }
 }

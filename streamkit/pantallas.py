@@ -16,10 +16,21 @@ import panel_bot
 from rutas import BOT, DATOS, WEB
 
 ARCHIVO = os.path.join(DATOS, 'pantallas.json')
+TEXTOS = os.path.join(DATOS, 'textos.json')        # los textos compartidos: {tema} en cualquier pantalla
+IMAGENES = os.path.join(DATOS, 'imagenes')          # las que se suben para la pieza de imagen
 APOYOS = os.path.join(BOT, 'apoyos.json')  # lo escribe el bot
 with open(os.path.join(WEB, 'piezas.json'), encoding='utf-8') as _f:
     ESQUEMA = json.load(_f)  # qué opciones tiene cada pieza: lo comparten la web, el editor y el MCP
+# las opciones de animación son las mismas para todas: se suman a cada pieza, con los valores de siempre de esa pieza
+_ANIMACION = {o['clave']: o for o in ESQUEMA.pop('_animacion')['opciones']}
+for _p in ESQUEMA.values():
+    _p['opciones'] += [{**_ANIMACION[c], 'def': _p.get('animacion_def', {}).get(c, _ANIMACION[c]['def'])}
+                       for c in _p.pop('animacion', [])]
+    _p.pop('animacion_def', None)
 TIPOS = tuple(ESQUEMA)
+IMAGEN_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+MAX_IMAGEN = 15 * 1024 * 1024
+MAX_TEXTOS = 30
 MAX_CSS = 20000
 FORMATOS = {'horizontal': (1920, 1080), 'vertical': (1080, 1920)}
 MAX_PANTALLAS, MAX_PIEZAS = 50, 40
@@ -78,10 +89,15 @@ def opciones(tipo, op):
             validos = [v for v, _ in o['valores']]
             if valor not in validos:
                 raise ValueError(f'{que} tiene que ser uno de: {", ".join(validos)}.')
+        elif o['tipo'] == 'imagen':
+            if not isinstance(valor, str) or valor and not (nombre_imagen(valor) or re.fullmatch(r'https://[^\s"\'<>]{1,500}', valor)):
+                raise ValueError(f'{que} es el nombre de una imagen subida (png, jpg, gif o webp) o un link https.')
         else:
             if not isinstance(valor, str):
                 raise ValueError(f'{que} tiene que ser un texto.')
             valor = valor[:300]
+            if o.get('patron') and not re.fullmatch(o['patron'], valor):
+                raise ValueError(f'{que} va solo con letras, números y espacios, hasta 60.')
         limpio[clave] = valor
     return limpio
 
@@ -140,6 +156,70 @@ def borrar(pid):
         if not any(p.get('id') == pid for p in lista):
             raise ValueError('Esa pantalla ya no existe.')
         escribir([p for p in lista if p.get('id') != pid])
+
+
+def nombre_imagen(nombre):
+    """El nombre de una imagen subida, si es válido: sin carpetas y con una extensión de imagen."""
+    nombre = str(nombre or '')
+    ok = re.fullmatch(r'[\w][\w .()-]{0,99}', nombre) and nombre.lower().endswith(IMAGEN_EXT) and '..' not in nombre
+    return nombre if ok else None
+
+
+def imagenes():
+    try:
+        return sorted(n for n in os.listdir(IMAGENES) if nombre_imagen(n))
+    except OSError:
+        return []
+
+
+def guardar_imagen(nombre, leer, tamano):
+    """Guarda una imagen subida. leer(n) da los bytes del pedido."""
+    nombre = nombre_imagen(os.path.basename(nombre))
+    if not nombre:
+        raise ValueError('La imagen tiene que ser png, jpg, gif o webp, con un nombre sin caracteres raros.')
+    if tamano > MAX_IMAGEN:
+        raise ValueError('La imagen puede pesar hasta 15 MB.')
+    os.makedirs(IMAGENES, exist_ok=True)
+    tmp = os.path.join(IMAGENES, nombre + '.subiendo')
+    with open(tmp, 'wb') as f:
+        while tamano:
+            parte = leer(min(tamano, 1 << 20))
+            if not parte:
+                break
+            f.write(parte)
+            tamano -= len(parte)
+    os.replace(tmp, os.path.join(IMAGENES, nombre))
+    return nombre
+
+
+def leer_textos():
+    try:
+        with open(TEXTOS, encoding='utf-8') as f:
+            t = json.load(f)
+        return {k: v for k, v in t.items() if isinstance(v, str)} if isinstance(t, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def guardar_textos(textos):
+    """Reemplaza todos los textos compartidos. Una pieza muestra el de "tema" donde diga {tema}."""
+    if not isinstance(textos, dict):
+        raise ValueError('Los textos van como un objeto: {"tema": "Ranked"}.')
+    if len(textos) > MAX_TEXTOS:
+        raise ValueError(f'Hay lugar para {MAX_TEXTOS} textos.')
+    limpio = {}
+    for k, v in textos.items():
+        if not isinstance(k, str) or not re.fullmatch(r'[a-z0-9_]{1,30}', k):
+            raise ValueError(f'El nombre "{k}" va en minúsculas, sin espacios ni acentos (letras, números y _), hasta 30.')
+        if not isinstance(v, str):
+            raise ValueError(f'El texto de "{k}" tiene que ser un texto.')
+        limpio[k] = v[:300]
+    with candado:
+        tmp = TEXTOS + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(limpio, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, TEXTOS)
+    return limpio
 
 
 def contar(apoyos, desde):
@@ -201,4 +281,4 @@ def datos():
     return {'viewers': {p: n for p, n in viewers.items() if isinstance(n, int)},
             'seguidores': bot.get('seguidores', {}) if vivo else {},
             'stream': contar(apoyos if isinstance(apoyos, list) else [], min(inicios) if inicios else None),
-            'en_vivo': bool(inicios), 'titulo': leer_titulos()}
+            'en_vivo': bool(inicios), 'titulo': leer_titulos(), 'textos': leer_textos()}

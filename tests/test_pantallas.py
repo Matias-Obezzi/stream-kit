@@ -40,10 +40,10 @@ falla(pieza({'texto': 5}, 'texto'), 'texto')
 falla(pieza([1]), 'objeto')
 falla({'nombre': 'x', 'piezas': [{'tipo': 'chat', 'clase': '1<script>'}]}, 'clase CSS')
 falla({'nombre': 'x', 'css': 'x' * 20001}, 'CSS')
-assert set(p.TIPOS) == {'chat', 'alertas', 'marco', 'texto', 'titulo', 'viewers', 'meta', 'lluvia', 'ultimo', 'cuenta'}
+assert set(p.TIPOS) == {'chat', 'alertas', 'marco', 'texto', 'titulo', 'viewers', 'meta', 'lluvia', 'ultimo', 'cuenta', 'imagen'}
 for tipo, e in p.ESQUEMA.items():  # cada opción de piezas.json tiene lo que necesitan el editor y la validación
     for o in e['opciones']:
-        assert o['tipo'] in ('si', 'numero', 'color', 'elegir', 'texto') and 'def' in o and o['nombre'], (tipo, o)
+        assert o['tipo'] in ('si', 'numero', 'color', 'elegir', 'texto', 'imagen') and 'def' in o and o['nombre'], (tipo, o)
         if o['tipo'] == 'numero':
             assert o['min'] <= o['def'] <= o['max'], (tipo, o)
         if o['tipo'] == 'elegir':
@@ -94,4 +94,48 @@ for tipo, e in p.ESQUEMA.items():
     assert f'### `{tipo}`' in ref and all(f"- `{o['clave']}` (" in ref for o in e['opciones']), tipo
 guia = open(os.path.join(_RAIZ, 'llms.txt'), encoding='utf-8').read()
 assert guia.startswith('# Stream Kit') and all(f'`{t}`' in guia for t in p.TIPOS)
+
+# animaciones: las mismas opciones en cada pieza, con los valores de siempre de esa pieza (el chat y las alertas, como antes)
+claves = lambda t: [o['clave'] for o in p.ESQUEMA[t]['opciones']]
+de = lambda t, c: next(o['def'] for o in p.ESQUEMA[t]['opciones'] if o['clave'] == c)
+assert claves('chat')[-3:] == ['entrada', 'salida', 'velocidad'] and (de('chat', 'entrada'), de('chat', 'salida')) == ('abajo', 'aparecer')
+assert claves('texto')[-3:] == ['entrada', 'velocidad', 'retraso'] and de('texto', 'entrada') == 'ninguna'
+assert not {'entrada', 'salida'} & set(claves('lluvia')) and '_animacion' not in p.ESQUEMA
+assert 'animacion' not in p.ESQUEMA['chat'] and 'animacion_def' not in p.ESQUEMA['chat'], 'el esquema que se sirve ya viene armado'
+assert p.opciones('texto', {'entrada': 'rebote', 'velocidad': 99999, 'retraso': 500}) == {'entrada': 'rebote', 'velocidad': 3000, 'retraso': 500}
+falla(pieza({'salida': 'volar'}), 'ninguna, aparecer')
+# fuentes de Google: solo el nombre, sin nada que se pueda colar en el link
+assert p.opciones('texto', {'fuente': 'google', 'fuente_google': 'Bebas Neue'}) == {'fuente': 'google', 'fuente_google': 'Bebas Neue'}
+falla(pieza({'fuente_google': 'x&family=y'}, 'texto'), 'letras, números y espacios')
+# imagen: una subida o un link https
+assert p.opciones('imagen', {'imagen': 'logo.png'}) == {'imagen': 'logo.png'}
+assert p.opciones('imagen', {'imagen': 'https://ejemplo.com/a.gif'})['imagen'] == 'https://ejemplo.com/a.gif'
+for malo in ('../config.json', 'a.svg', 'http://x.com/a.png', 'javascript:alert(1)', 'C:/x.png', 5):
+    falla(pieza({'imagen': malo}, 'imagen'), 'imagen subida')
+assert p.nombre_imagen('mi logo (1).webp') and not p.nombre_imagen('..png') and not p.nombre_imagen('a/b.png')
+import io
+crudo = io.BytesIO(b'PNG' + b'x' * 5001)
+assert p.guardar_imagen('C:/fotos/logo.png', crudo.read, 5004) == 'logo.png' and p.imagenes() == ['logo.png']
+assert os.path.getsize(os.path.join(p.IMAGENES, 'logo.png')) == 5004
+for nombre, tam, texto in (('a.svg', 10, 'png, jpg'), ('.png', 10, 'png, jpg'), ('b.png', 16 * 1024 * 1024, '15 MB')):
+    try:
+        p.guardar_imagen(nombre, io.BytesIO(b'x' * 10).read, tam)
+        raise AssertionError('tenía que fallar')
+    except ValueError as e:
+        assert texto in str(e) or 'nombre' in str(e), e
+assert p.imagenes() == ['logo.png'], 'lo rechazado no queda'
+# las carpetas del nombre no cuentan: ../../x.png se guarda como x.png, adentro de imagenes
+assert p.guardar_imagen('../../x.png', io.BytesIO(b'x').read, 1) == 'x.png' and os.path.isfile(os.path.join(p.IMAGENES, 'x.png'))
+# textos compartidos
+assert p.leer_textos() == {} and p.datos()['textos'] == {}
+assert p.guardar_textos({'tema': 'Ranked', 'proximo': 'x' * 400}) == {'tema': 'Ranked', 'proximo': 'x' * 300}
+assert p.datos()['textos']['tema'] == 'Ranked'
+for malo, texto in (({'Tema': 'x'}, 'minúsculas'), ({'tema del dia': 'x'}, 'minúsculas'), ({'t': 5}, 'texto'),
+                    ([1], 'objeto'), ({f't{i}': '' for i in range(31)}, '30')):
+    try:
+        p.guardar_textos(malo)
+        raise AssertionError('tenía que fallar')
+    except ValueError as e:
+        assert texto in str(e), e
+assert p.leer_textos()['tema'] == 'Ranked', 'lo rechazado no pisa lo guardado'
 print('ok')

@@ -189,6 +189,18 @@ def panel():
                 return self.reply(200, json.dumps(pantallas.leer()).encode())
             if path == '/api/pantallas/datos':
                 return self.reply(200, json.dumps(pantallas.datos()).encode())
+            if path == '/api/pantallas/textos':
+                return self.reply(200, json.dumps(pantallas.leer_textos()).encode())
+            if path == '/api/pantallas/imagenes':
+                return self.reply(200, json.dumps(pantallas.imagenes()).encode())
+            if path.startswith('/imagenes/'):  # las de la pieza de imagen
+                nombre = pantallas.nombre_imagen(unquote(path[10:]))
+                archivo = nombre and os.path.join(pantallas.IMAGENES, nombre)
+                if not archivo or not os.path.isfile(archivo):
+                    return self.reply(404)
+                tipo = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif'}.get(os.path.splitext(nombre)[1].lower())
+                with open(archivo, 'rb') as f:
+                    return self.reply(200, f.read(), tipo or TIPOS[os.path.splitext(nombre)[1].lower()])
             if path in ('/config', '/api/config') and not self.local():  # claves y sesiones: solo desde esta PC
                 return self.reply(403, 'La configuración solo se abre desde la PC.'.encode(), 'text/plain; charset=utf-8')
             if path in PAGINAS:  # el panel (ui/, armado en web/app): la misma página para todas, la ruta la resuelve ella
@@ -228,8 +240,10 @@ def panel():
             if path in ('/plataformas.js', '/emotes.js'):
                 return self.page(path[1:], 'text/javascript; charset=utf-8')
             if path == '/piezas.js':  # con su esquema adelante: así carga de una vez, sin pedir otro archivo
-                with open(os.path.join(WEB, 'piezas.json'), 'rb') as f, open(os.path.join(WEB, 'piezas.js'), 'rb') as g:
-                    return self.reply(200, b'window.PIEZAS_ESQUEMA = ' + f.read() + b';\n' + g.read(), 'text/javascript; charset=utf-8')
+                # el esquema ya armado (con las animaciones sumadas a cada pieza), el mismo que valida al guardar
+                with open(os.path.join(WEB, 'piezas.js'), 'rb') as g:
+                    esquema = json.dumps(pantallas.ESQUEMA, ensure_ascii=False).encode()
+                    return self.reply(200, b'window.PIEZAS_ESQUEMA = ' + esquema + b';\n' + g.read(), 'text/javascript; charset=utf-8')
             if path == '/api/chat/quienes':
                 try:
                     return self.reply(200, json.dumps(panel_bot.quienes()).encode())
@@ -266,6 +280,12 @@ def panel():
             size = int(self.headers.get('Content-Length') or 0)
             if path in ('/api/delay', '/api/live', '/api/red/prueba'):
                 return self.nucleo('POST', path)
+            if path == '/api/pantallas/imagen':  # el cuerpo es la imagen; el nombre va en la query
+                try:
+                    nombre = pantallas.guardar_imagen(unquote(query), self.rfile.read, size)
+                except (OSError, ValueError) as e:
+                    return self.error(str(e))
+                return self.reply(200, json.dumps({'nombre': nombre, 'imagenes': pantallas.imagenes()}).encode())
             if path == '/api/upload':
                 name = os.path.basename(unquote(query))
                 if not name.lower().endswith(UPLOAD_EXT):
@@ -320,6 +340,11 @@ def panel():
                     else:
                         canal.guardar_preset(s)
                     return self.reply(200, json.dumps(canal.presets()).encode())
+                except (OSError, ValueError) as e:
+                    return self.error(str(e))
+            if path == '/api/pantallas/textos':
+                try:
+                    return self.reply(200, json.dumps(pantallas.guardar_textos(s)).encode())
                 except (OSError, ValueError) as e:
                     return self.error(str(e))
             if path in ('/api/pantallas/guardar', '/api/pantallas/borrar'):

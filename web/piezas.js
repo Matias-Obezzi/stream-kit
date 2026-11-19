@@ -22,12 +22,63 @@
     if (texto !== undefined) e.textContent = texto;
     return e;
   };
+  // una fuente de Google se pide una sola vez por página (en OBS hace falta internet, como para los emotes)
+  const pedidas = new Set();
+  function deGoogle(nombre) {
+    nombre = String(nombre || '').trim();
+    if (!/^[A-Za-z0-9 ]{1,60}$/.test(nombre)) return null;
+    if (!pedidas.has(nombre)) {
+      pedidas.add(nombre);
+      const l = el('link');
+      l.rel = 'stylesheet';
+      l.href = 'https://fonts.googleapis.com/css2?family=' + nombre.replace(/ /g, '+') + '&display=swap';
+      document.head.append(l);
+    }
+    return '"' + nombre + '", system-ui, sans-serif';
+  }
   function letra(e, o) {
-    e.style.fontFamily = FUENTES[o.fuente] || FUENTES.sistema;
+    e.style.fontFamily = (o.fuente === 'google' && deGoogle(o.fuente_google)) || FUENTES[o.fuente] || FUENTES.sistema;
     e.style.fontSize = num(o.tamano, 8, 300, 24) + 'px';
     e.style.color = color(o.color, '#ffffff');
   }
   const cifra = n => Number(n || 0).toLocaleString('es-AR');
+  // {tema} → el texto compartido "tema". Antes de los primeros datos queda vacío; en el editor, uno que no existe se ve
+  // como {tema}, así se nota que falta crearlo
+  const rellenar = (texto, textos, demo) => String(texto || '').replace(/\{([a-z0-9_]{1,30})\}/g,
+    (todo, k) => (textos && Object.prototype.hasOwnProperty.call(textos, k) ? textos[k] : demo ? todo : ''));
+  const tieneTextos = texto => /\{[a-z0-9_]{1,30}\}/.test(texto || '');
+
+  // Animaciones de entrada y salida (opciones entrada, salida, velocidad y retraso de cada pieza). La salida es la misma
+  // animación al revés: "abajo" entra desde abajo y sale hacia abajo. Con "reducir movimiento" en Windows, nada se mueve.
+  const MOVIMIENTOS = {
+    aparecer: [{ opacity: 0 }, { opacity: 1 }],
+    abajo: [{ opacity: 0, transform: 'translateY(24px)' }, { opacity: 1, transform: 'none' }],
+    arriba: [{ opacity: 0, transform: 'translateY(-24px)' }, { opacity: 1, transform: 'none' }],
+    izquierda: [{ opacity: 0, transform: 'translateX(-60px)' }, { opacity: 1, transform: 'none' }],
+    derecha: [{ opacity: 0, transform: 'translateX(60px)' }, { opacity: 1, transform: 'none' }],
+    zoom: [{ opacity: 0, transform: 'scale(.8)' }, { opacity: 1, transform: 'none' }],
+    rebote: [{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1.08)', offset: 0.6 },
+             { opacity: 1, transform: 'scale(.97)', offset: 0.8 }, { opacity: 1, transform: 'none' }],
+    abrir: [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0% 0 0)' }],
+  };
+  const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const hayAnimacion = nombre => !quieto && !!MOVIMIENTOS[nombre];
+  /** Anima la entrada (o la salida, con sale) de un elemento. Devuelve cuándo termina. */
+  function animar(e, o, sale, demora) {
+    const nombre = sale ? o.salida : o.entrada;
+    if (!hayAnimacion(nombre)) return Promise.resolve();
+    return e.animate(MOVIMIENTOS[nombre], {
+      duration: num(o.velocidad, 100, 3000, 400), delay: demora || 0, easing: 'cubic-bezier(.2, .9, .2, 1)',
+      direction: sale ? 'reverse' : 'normal', fill: sale ? 'forwards' : 'backwards',
+    }).finished.catch(() => {});
+  }
+  // un renglón que entra o sale de una lista (el chat): el lugar se abre o se cierra suave, así los demás no saltan
+  function lugar(e, abre, ms) {
+    if (quieto) return Promise.resolve();
+    const alto = e.offsetHeight + 'px', cerrado = { height: '0px', marginTop: '-6px', paddingTop: '0px', paddingBottom: '0px' };
+    return e.animate(abre ? [cerrado, { height: alto }] : [{ height: alto }, cerrado],
+                     { duration: Math.min(ms, 300), easing: 'ease-out', fill: abre ? 'none' : 'forwards' }).finished.catch(() => {});
+  }
   const conEmotes = (texto, plataforma, emotes) => (window.Emotes ? Emotes.pintar(texto, plataforma, emotes)
     : document.createTextNode(String(texto || '').replace(/\[emote:\d+:([^\]]+)\]/g, '$1')));
 
@@ -35,6 +86,7 @@
   const MUESTRA = {
     viewers: { twitch: 128, kick: 45 }, seguidores: { twitch: 1520, kick: 310 }, en_vivo: true,
     stream: { follows: 12, subs: 3, bits: 500, kicks: 200 }, titulo: { twitch: 'Título de tu stream', kick: 'Título de tu stream' },
+    textos: {}, demo: true,  // el editor pone acá los textos compartidos de verdad
   };
   const ahora = () => Date.now() / 1000;
   const CHAT_MUESTRA = [
@@ -79,9 +131,10 @@
         function sacar(li) {
           if (!li.isConnected || li.classList.contains('pz-sale')) return;
           li.classList.add('pz-sale');
-          setTimeout(() => li.remove(), 400);
+          const ms = num(o.velocidad, 100, 3000, 400);
+          animar(li, o, true).then(() => (hayAnimacion(o.salida) ? lugar(li, false, ms) : null)).then(() => li.remove());
         }
-        function agregar(e) {
+        function agregar(e, viejo) {
           if (o.comandos && /^\s*!/.test(e.texto || '')) return;
           const li = el('li', 'pz-mensaje ' + (e.plataforma === 'kick' ? 'kick' : 'twitch'));
           li.mensaje = e;
@@ -93,14 +146,25 @@
           quien.style.color = o.nombres === 'fijo' ? color(o.color_nombre, '#a78bfa') : color(e.color, color(o.color_nombre, '#a78bfa'));
           li.append(quien, conEmotes(e.texto, e.plataforma, e.emotes));
           lista.append(li);
+          if (!viejo && hayAnimacion(o.entrada)) {  // lo que ya estaba al abrir aparece quieto
+            lugar(li, true, num(o.velocidad, 100, 3000, 400));
+            animar(li, o);
+          }
           while (lista.children.length > 60) lista.firstChild.remove();
           if (duracion && !ctx.demo) setTimeout(() => sacar(li), Math.max(0, duracion - (Date.now() - (e.t || ahora()) * 1000)));
         }
-        if (ctx.demo) CHAT_MUESTRA.forEach(agregar);
+        if (ctx.demo) CHAT_MUESTRA.forEach(e => agregar(e, true));
+        let muestra = 0;
         return {
+          probar() {  // en el editor: un mensaje que entra y, a los 2 s, sale
+            const e = Object.assign({}, CHAT_MUESTRA[muestra++ % CHAT_MUESTRA.length], { t: ahora() });
+            agregar(e);
+            const li = lista.lastChild;
+            setTimeout(() => sacar(li), 2000);
+          },
           evento(e, viejo) {
             if (e.tipo === 'chat' && e.usuario) {
-              if (!viejo || !duracion || Date.now() - e.t * 1000 < duracion) agregar(e);
+              if (!viejo || !duracion || Date.now() - e.t * 1000 < duracion) agregar(e, viejo);
             } else if (e.tipo === 'moderado' && e.accion !== 'desbanear') {  // lo borrado o baneado se va de la pantalla
               [...lista.children].forEach(li => {
                 const m = li.mensaje;
@@ -126,7 +190,7 @@
         function mostrar(e, fija) {
           const [tipo, detalle] = ALERTAS[e.tipo](e);
           const acento = color(o.acento, '#8b5cf6');
-          const a = el('div', 'pz-alerta' + (fija ? '' : ' pz-entra'));
+          const a = el('div', 'pz-alerta');
           a.style.background = rgba(o.fondo, o.opacidad);
           a.style.borderColor = acento;
           const cab = el('div', 'pz-alerta-tipo');
@@ -144,7 +208,11 @@
             a.append(m);
           }
           caja.replaceChildren(a);
+          if (!fija) animar(a, o);
           return a;
+        }
+        function sale(a) {
+          return animar(a, o, true).then(() => a.remove());
         }
         function siguiente() {
           if (ocupada || !cola.length) return;
@@ -152,13 +220,16 @@
           const e = cola.shift();
           const a = mostrar(e);
           if (o.sonido) sonar(e.tipo !== 'follow');
-          reloj = setTimeout(() => {
-            a.classList.add('pz-sale');
-            reloj = setTimeout(() => { a.remove(); ocupada = false; siguiente(); }, 400);
-          }, dura);
+          reloj = setTimeout(() => sale(a).then(() => { ocupada = false; siguiente(); }), dura);
         }
-        if (ctx.demo) mostrar({ tipo: 'resub', plataforma: 'twitch', usuario: 'espectador_uno', cantidad: 7, mensaje: 'vamos Kappa', emotes: '25:6-10' }, true);
+        const DEMO = { tipo: 'resub', plataforma: 'twitch', usuario: 'espectador_uno', cantidad: 7, mensaje: 'vamos Kappa', emotes: '25:6-10' };
+        if (ctx.demo) mostrar(DEMO, true);
         return {
+          probar() {  // en el editor: la alerta entra, queda 2 s y sale
+            clearTimeout(reloj);
+            const a = mostrar(DEMO);
+            reloj = setTimeout(() => sale(a).then(() => { if (!caja.firstChild) mostrar(DEMO, true); }), 2000);
+          },
           evento(e, viejo) {
             if (viejo || !ALERTAS[e.tipo] || !e.usuario || !o[GRUPO[e.tipo]]) return;
             cola.push(e);
@@ -171,6 +242,7 @@
 
     marco: {
       crear(caja, o) {
+        let t;
         const m = el('div', 'pz-marco');
         const radio = num(o.radio, 0, 200, 12);
         m.style.border = num(o.grosor, 0, 60, 4) + 'px solid ' + color(o.borde, '#8b5cf6');
@@ -178,18 +250,22 @@
         if (o.sombra) m.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.55)';
         caja.append(m);
         if (o.titulo) {
-          const t = el('div', 'pz-marco-titulo', o.titulo);
+          t = el('div', 'pz-marco-titulo', rellenar(o.titulo));
           letra(t, o);
           t.style.background = rgba(o.fondo, o.opacidad);
           t.style.borderRadius = Math.min(radio, 12) + 'px';
           caja.append(t);
         }
-        return {};
+        return tieneTextos(o.titulo) ? { datos(d) { t.textContent = rellenar(o.titulo, d.textos, d.demo); } } : {};
       },
     },
 
     texto: {
-      crear(caja, o) { caja.append(bloque(o, o.texto)); return {}; },
+      crear(caja, o) {
+        const b = bloque(o, rellenar(o.texto));
+        caja.append(b);
+        return tieneTextos(o.texto) ? { datos(d) { b.firstChild.textContent = rellenar(o.texto, d.textos, d.demo); } } : {};
+      },
     },
 
     titulo: {
@@ -224,7 +300,7 @@
         m.style.background = rgba(o.fondo, o.opacidad);
         m.style.borderRadius = num(o.radio, 0, 60, 10) + 'px';
         letra(m, o);
-        const arriba = el('div', 'pz-meta-arriba'), titulo = el('span', 'pz-meta-titulo', o.titulo), cuenta = el('span', 'pz-meta-cuenta');
+        const arriba = el('div', 'pz-meta-arriba'), titulo = el('span', 'pz-meta-titulo', rellenar(o.titulo)), cuenta = el('span', 'pz-meta-cuenta');
         arriba.append(titulo, cuenta);
         const barra = el('div', 'pz-meta-barra'), lleno = el('i');
         lleno.style.background = color(o.barra, '#22c55e');
@@ -239,6 +315,7 @@
         poner(o.fuente_meta === 'manual' ? num(o.actual, 0, 1e8, 0) : 0);
         return {
           datos(d) {
+            if (tieneTextos(o.titulo)) titulo.textContent = rellenar(o.titulo, d.textos, d.demo);
             if (o.fuente_meta === 'manual') return;
             const s = d.seguidores || {}, st = d.stream || {};
             const n = o.fuente_meta === 'seguidores' ? (s.twitch || 0) + (s.kick || 0)
@@ -293,8 +370,18 @@
         const TIPOS = { follow: ['follow'], sub: ['sub', 'resub', 'regalo'], apoyo: ['bits', 'kicks'] };
         TIPOS.todo = [...TIPOS.follow, ...TIPOS.sub, ...TIPOS.apoyo];
         const poner = nombre => { b.firstChild.textContent = [o.etiqueta, nombre].filter(Boolean).join(': '); b.style.visibility = nombre ? '' : 'hidden'; };
-        poner(ctx.demo ? 'nombre_de_ejemplo' : '');
-        return { evento(e) { if ((TIPOS[o.que] || TIPOS.follow).includes(e.tipo) && e.usuario) poner(e.usuario); } };
+        let actual = ctx.demo ? 'nombre_de_ejemplo' : '', cambio = Promise.resolve();
+        poner(actual);
+        function cambiar(nombre) {  // uno atrás del otro: si llegan dos juntos, se ven los dos
+          cambio = cambio.then(() => (actual ? animar(b, o, true) : null)).then(() => { actual = nombre; poner(nombre); return animar(b, o); });
+        }
+        return {
+          probar() { cambiar(actual === 'nombre_de_ejemplo' ? 'otro_nombre' : 'nombre_de_ejemplo'); },
+          evento(e, viejo) {
+            if (!(TIPOS[o.que] || TIPOS.follow).includes(e.tipo) || !e.usuario) return;
+            if (viejo) { actual = e.usuario; poner(e.usuario); } else cambiar(e.usuario);
+          },
+        };
       },
     },
 
@@ -303,14 +390,34 @@
         const b = bloque(o, '');
         caja.append(b);
         const fin = Date.now() + num(o.minutos, 1, 600, 10) * 60000;
+        let textos, demo;
         function tic() {
           const falta = Math.max(0, Math.ceil((fin - Date.now()) / 1000));
           const reloj = Math.floor(falta / 60) + ':' + String(falta % 60).padStart(2, '0');
-          b.firstChild.textContent = falta ? [o.etiqueta, reloj].filter(Boolean).join(' ') : o.final;
+          b.firstChild.textContent = falta ? [rellenar(o.etiqueta, textos, demo), reloj].filter(Boolean).join(' ') : rellenar(o.final, textos, demo);
         }
         tic();
         const t = ctx.demo ? null : setInterval(tic, 250);
-        return { quitar() { clearInterval(t); } };
+        return { quitar() { clearInterval(t); }, datos(d) { textos = d.textos; demo = d.demo; tic(); } };
+      },
+    },
+
+    imagen: {
+      crear(caja, o) {
+        const v = String(o.imagen || '');
+        if (!v) {
+          const vacia = el('div', 'pz-imagen-vacia', 'Elegí o subí una imagen');
+          caja.append(vacia);
+          return {};
+        }
+        const i = el('img', 'pz-imagen');
+        i.alt = '';
+        i.src = /^https:\/\//.test(v) ? v : '/imagenes/' + encodeURIComponent(v);
+        i.style.objectFit = { cubrir: 'cover', estirar: 'fill' }[o.ajuste] || 'contain';
+        i.style.opacity = num(o.opacidad, 0, 100, 100) / 100;
+        i.style.borderRadius = num(o.radio, 0, 500, 0) + 'px';
+        caja.append(i);
+        return {};
       },
     },
   };
@@ -346,6 +453,12 @@
     const o = Object.assign(predeterminadas(pieza.tipo), pieza.op);
     const viva = Object.assign({ caja }, def.crear(caja, o, ctx || {}));
     if (ctx && ctx.demo && viva.datos) viva.datos(MUESTRA);
+    // las fijas (las que tienen "retraso") entran enteras cuando carga la pantalla, después de su espera
+    if (def.opciones.some(x => x.clave === 'retraso')) {
+      const entrar = () => animar(caja, o, false, num(o.retraso, 0, 10000, 0));
+      if (!(ctx && ctx.quieta)) entrar();
+      if (!viva.probar) viva.probar = entrar;
+    }
     return viva;
   }
 
@@ -354,7 +467,7 @@
     .pz-caja { position: absolute; overflow: hidden; }
     .pz-chat { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;
                justify-content: flex-end; gap: 6px; }
-    .pz-mensaje { flex: none; padding: 8px 12px; line-height: 1.4; overflow-wrap: anywhere; animation: pz-entra .3s ease-out; }
+    .pz-mensaje { flex: none; padding: 8px 12px; line-height: 1.4; overflow-wrap: anywhere; overflow: hidden; }
     .pz-mensaje.pz-rayita.twitch { box-shadow: inset 4px 0 #9146ff; padding-left: 14px; }
     .pz-mensaje.pz-rayita.kick { box-shadow: inset 4px 0 #53fc18; padding-left: 14px; }
     .pz-quien { font-weight: 700; margin-right: 8px; }
@@ -362,12 +475,10 @@
     .pz-alerta { position: absolute; inset: 0; box-sizing: border-box; border: 2px solid; border-radius: 10px; padding: 16px 22px;
                  display: flex; flex-direction: column; justify-content: center; gap: 4px; overflow: hidden; font-family: system-ui, sans-serif;
                  box-shadow: 0 18px 44px rgba(0, 0, 0, .55); }
-    .pz-alerta.pz-entra { animation: pz-entra .45s cubic-bezier(.2, .9, .2, 1); }
     .pz-alerta-tipo { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
     .pz-alerta-quien { font-weight: 800; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pz-alerta-detalle { font-size: 18px; opacity: .85; }
     .pz-alerta-mensaje { font-size: 16px; opacity: .85; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    .pz-sale { animation: pz-sale .4s ease-in forwards; }
     .pz-marco { position: absolute; inset: 0; box-sizing: border-box; }
     .pz-marco-titulo { position: absolute; left: 16px; top: 0; transform: translateY(-50%); padding: 4px 12px; white-space: nowrap; font-weight: 700; }
     .pz-caja:has(.pz-marco-titulo) { overflow: visible; }
@@ -380,10 +491,11 @@
     .pz-meta-barra i { display: block; height: 100%; width: 0; border-radius: 7px; transition: width .8s ease; }
     .pz-gota { position: absolute; top: 0; line-height: 1; animation: pz-cae linear forwards; transform: translateY(-120%); }
     .pz-gota img { display: block; }
-    @keyframes pz-entra { from { opacity: 0; transform: translateY(12px); } }
-    @keyframes pz-sale { to { opacity: 0; } }
+    .pz-imagen { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .pz-imagen-vacia { position: absolute; inset: 0; display: grid; place-items: center; border: 2px dashed rgba(255, 255, 255, .35);
+                       color: rgba(255, 255, 255, .7); font: 600 20px system-ui, sans-serif; background: rgba(0, 0, 0, .35); }
     @keyframes pz-cae { from { transform: translateY(-120%) rotate(0); } to { transform: translateY(var(--alto)) rotate(var(--giro)); } }
-    @media (prefers-reduced-motion: reduce) { .pz-mensaje, .pz-alerta.pz-entra, .pz-sale { animation-duration: .01s; } }`;
+`;
   document.head.append(estilo);
 
   // El CSS propio de una pantalla queda adentro del lienzo (raiz): en el editor no cambia el resto de la página, y se ve
@@ -417,5 +529,5 @@
   const ESQUEMA = window.PIEZAS_ESQUEMA || {};
   Object.keys(PIEZAS).forEach(t => Object.assign(PIEZAS[t], ESQUEMA[t] || { nombre: t, w: 400, h: 200, opciones: [] }));
 
-  window.Piezas = { PIEZAS, FORMATOS, MUESTRA, montar, predeterminadas, css, ponerCss };
+  window.Piezas = { PIEZAS, FORMATOS, MUESTRA, montar, predeterminadas, css, ponerCss, rellenar };
 })();

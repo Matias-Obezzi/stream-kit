@@ -21,7 +21,8 @@ assert pedir('initialize', {'protocolVersion': '1999-01-01'})['result']['protoco
 assert mcp.atender({'jsonrpc': '2.0', 'method': 'notifications/initialized'}, 8080, '') is None, 'las notificaciones no llevan respuesta'
 assert pedir('ping')['result'] == {}
 herramientas = {h['name']: h for h in pedir('tools/list')['result']['tools']}
-assert set(herramientas) == {'ver_piezas', 'listar_pantallas', 'ver_pantalla', 'guardar_pantalla', 'borrar_pantalla', 'datos_en_vivo'}
+assert set(herramientas) == {'ver_piezas', 'listar_pantallas', 'ver_pantalla', 'guardar_pantalla', 'borrar_pantalla', 'datos_en_vivo',
+                             'ver_textos', 'guardar_textos'}
 assert all(h['description'] and h['inputSchema']['type'] == 'object' for h in herramientas.values())
 json.dumps(herramientas)  # todo se puede mandar
 
@@ -47,11 +48,17 @@ assert usar('borrar_pantalla', id=p['id']) == ({'borrada': p['id']}, False) and 
 assert usar('borrar_pantalla', id=p['id'])[1]
 
 datos, _ = usar('datos_en_vivo')
-assert set(datos) == {'viewers', 'seguidores', 'stream', 'en_vivo', 'titulo'}
+assert set(datos) == {'viewers', 'seguidores', 'stream', 'en_vivo', 'titulo', 'textos'}
 
 assert pedir('tools/call', {'name': 'rm', 'arguments': {}})['error']['code'] == -32602
 assert pedir('tools/call', {'name': 'ver_pantalla', 'arguments': [1]})['error']['code'] == -32602
 assert pedir('resources/list')['error']['code'] == -32601
 assert mcp.atender({'id': 1, 'method': 'ping'}, 8080, '')['error']['code'] == -32600
 assert mcp.atender('basura', 8080, '')['error']['code'] == -32600
+# textos compartidos: un agente cambia el tema del día sin tocar las pantallas
+assert usar('ver_textos') == ({}, False)
+assert usar('guardar_textos', textos={'tema': 'Ranked', 'proximo': 'Viernes 21 h'}) == ({'tema': 'Ranked', 'proximo': 'Viernes 21 h'}, False)
+error, fallo = usar('guardar_textos', textos={'Tema del día': 'x'})
+assert fallo and 'minúsculas' in error, error
+assert usar('ver_textos')[0]['tema'] == 'Ranked' and usar('datos_en_vivo')[0]['textos']['proximo'] == 'Viernes 21 h'
 print('ok')

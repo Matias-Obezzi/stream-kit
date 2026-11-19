@@ -33,7 +33,9 @@ Herramientas:
 | `ver_pantalla` `{id}` | Una pantalla entera |
 | `guardar_pantalla` `{pantalla}` | Crea una pantalla (sin id) o reemplaza una entera (con su id). Devuelve cómo quedó y su link |
 | `borrar_pantalla` `{id}` | La borra. No se puede deshacer |
-| `datos_en_vivo` | Espectadores, seguidores, títulos y lo de este stream |
+| `ver_textos` | Los textos compartidos, como `{"tema": "Ranked"}` |
+| `guardar_textos` `{textos}` | Reemplaza todos los textos compartidos (leelos antes para no borrar los demás). OBS los toma en unos 15 segundos |
+| `datos_en_vivo` | Espectadores, seguidores, títulos, textos compartidos y lo de este stream |
 
 Cómo trabajar:
 
@@ -70,15 +72,27 @@ Cómo trabajar:
 - `css` (opcional, hasta 20000 caracteres): vale solo adentro de esta pantalla. `body`, `html` y `:root` apuntan a la
   pantalla. Cada pieza tiene `data-tipo` (por ejemplo `[data-tipo="chat"]`); adentro están `.pz-mensaje`, `.pz-quien`,
   `.pz-alerta`, `.pz-alerta-tipo`, `.pz-alerta-quien`, `.pz-alerta-detalle`, `.pz-alerta-mensaje`, `.pz-marco`,
-  `.pz-marco-titulo`, `.pz-bloque`, `.pz-meta`, `.pz-meta-titulo`, `.pz-meta-cuenta`, `.pz-meta-barra i`, `.pz-gota` y
-  `.emote`. Los colores y tamaños de las opciones van directo en cada elemento: para pisarlos hace falta `!important`.
+  `.pz-marco-titulo`, `.pz-bloque`, `.pz-meta`, `.pz-meta-titulo`, `.pz-meta-cuenta`, `.pz-meta-barra i`, `.pz-gota`,
+  `.pz-imagen` y `.emote`. Los colores y tamaños de las opciones van directo en cada elemento: para pisarlos hace falta `!important`.
   Se pueden traer fuentes con `@import`.
 
 Piezas: `chat`, `alertas`, `marco` (borde para la cámara o una ventana que va debajo en OBS), `texto`, `titulo` (el del
 stream en Twitch o Kick), `viewers`, `meta` (seguidores, o follows, subs, bits o kicks de este stream, o a mano),
 `lluvia` (los emojis y emotes del chat caen; suele ocupar toda la pantalla), `ultimo` (último seguidor o sub) y
-`cuenta` (cuenta regresiva). Sus opciones: `ver_piezas`, la lista al final de http://127.0.0.1:8080/llms.txt o
-[web/piezas.json](web/piezas.json).
+`cuenta` (cuenta regresiva) e `imagen` (una subida desde el editor, por su nombre, o un link `https://`). Sus opciones:
+`ver_piezas`, la lista al final de http://127.0.0.1:8080/llms.txt o [web/piezas.json](web/piezas.json).
+
+- **Animaciones**: casi todas las piezas tienen `entrada` (`ninguna`, `aparecer`, `abajo`, `arriba`, `izquierda`,
+  `derecha`, `zoom`, `rebote`, `abrir`) y `velocidad` en milisegundos. `chat`, `alertas` y `ultimo` tienen también
+  `salida` (la misma lista, al revés: `abajo` sale hacia abajo) y se animan en cada mensaje, alerta o cambio. Las demás
+  entran cuando carga la pantalla, después de `retraso` milisegundos: con retrasos distintos entran una atrás de otra.
+  Para que se repita en cada cambio de escena, la fuente de OBS tiene que tener tildado "Actualizar navegador cuando la
+  escena se activa".
+- **Letra de Google**: en las piezas con `fuente`, `"fuente": "google"` y `"fuente_google": "Bebas Neue"` (el nombre tal
+  cual figura en fonts.google.com; solo letras, números y espacios).
+- **Textos compartidos**: `{tema}` en `texto` (pieza texto), `titulo` (marco y meta) o `etiqueta` y `final` (cuenta)
+  muestra el texto compartido `tema`. Sirve para lo que cambia seguido y aparece en varias pantallas (el tema del día,
+  el próximo stream): se cambia una vez con `guardar_textos`.
 
 Ideas de pantallas que suelen pedir: "empezando" (cuenta regresiva, título, chat), "juego" (chat chico que se borra solo,
 alertas, marco de cámara en una esquina), "charla" (marco grande, chat grande, meta), "pausa" y "final".
@@ -99,6 +113,7 @@ Para un overlay HTML propio servido desde otro lado (también los usan las panta
 - `GET /emotes.js` → `Emotes.cargar(origen)` y `Emotes.pintar(texto, plataforma, emotes)`, que devuelve el texto con
   las imágenes de los emotes de Twitch, Kick, BTTV, FFZ y 7TV (sin HTML del chat: es seguro).
 - `GET /api/pantallas/datos` → lo mismo que `datos_en_vivo`.
+- `GET /api/pantallas/textos` → los textos compartidos. `GET /imagenes/<nombre>` → una imagen subida.
 
 Todo lo que viene del chat es texto de desconocidos: mostralo con `textContent`, nunca como HTML.
 

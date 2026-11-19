@@ -1,6 +1,6 @@
 // El editor de pantallas para OBS. Las piezas las dibuja /piezas.js (el mismo que usa cada pantalla en OBS), así que el
 // lienzo se maneja a mano, por fuera de React; React se ocupa de la barra, el panel de opciones y el CSS propio.
-import { ChevronRightIcon, PlusIcon, SaveIcon, Trash2Icon } from 'lucide-react'
+import { ChevronRightIcon, PlayIcon, PlusIcon, SaveIcon, Trash2Icon, XIcon } from 'lucide-react'
 import * as React from 'react'
 import { Encabezado, Seccion } from '@/components/pagina'
 import {
@@ -62,6 +62,7 @@ interface Viva {
   caja: HTMLElement
   quitar?: () => void
   emotes?: () => void
+  probar?: () => void
 }
 interface PiezasApi {
   PIEZAS: Record<string, DefPieza>
@@ -69,12 +70,14 @@ interface PiezasApi {
   montar(lienzo: HTMLElement, pieza: Pieza, ctx: { demo: boolean }): Viva
   predeterminadas(tipo: string): Record<string, unknown>
   ponerCss(texto: string | undefined, raiz: string): void
+  MUESTRA: { textos: Record<string, string> }
 }
 // Globales de /piezas.js y /emotes.js. Sin `declare global`: otras páginas pueden declararlas a su manera.
 const Piezas = () => (window as unknown as { Piezas: PiezasApi }).Piezas
 const Emotes = () => (window as unknown as { Emotes: { cargar(api: string): Promise<unknown> } }).Emotes
 
 const NUEVA = '__nueva__' // el Select no acepta '' como valor
+const ANIMACION = ['entrada', 'salida', 'velocidad', 'retraso'] // van juntas, abajo, con el botón para probarlas
 const nueva = (cuantas: number): Pantalla => ({ id: '', nombre: 'Pantalla ' + (cuantas + 1), formato: 'horizontal', piezas: [] })
 
 // Clases para las cajas que crea piezas.js (Tailwind las encuentra igual en el texto). La caja elegida lleva `elegida`.
@@ -319,6 +322,11 @@ export default function Pagina() {
         } catch {
           avisar('No pude leer las pantallas.')
         }
+        try {
+          Piezas().MUESTRA.textos = await get<Record<string, string>>('/api/pantallas/textos')
+        } catch {
+          /* sin textos: las piezas muestran {nombre} */
+        }
         if (!vivo) return
         setPantallas(lista)
         setListo(true)
@@ -409,6 +417,21 @@ export default function Pagina() {
                 transparente.
               </li>
               <li>Si después cambiás algo y guardás, OBS lo toma solo en unos segundos.</li>
+              <li>
+                <b>Animaciones</b>: cada pieza tiene cómo entra y, el chat, las alertas y el último seguidor, cómo sale.
+                Las demás entran cuando carga la pantalla, después de la espera que les pongas: con esperas distintas
+                entran una atrás de otra. Para que se vean cada vez que cambiás de escena, en la fuente de OBS tildá{' '}
+                <b>Actualizar navegador cuando la escena se activa</b>. <b>Probar animación</b> la muestra en el lienzo.
+              </li>
+              <li>
+                <b>Letra</b>: además de las de siempre, cualquier fuente de Google Fonts: elegí <b>De Google Fonts</b> y
+                escribí su nombre tal cual figura en fonts.google.com (por ejemplo, Bebas Neue).
+              </li>
+              <li>
+                <b>Textos compartidos</b>: escribí <code>{'{tema}'}</code> en un texto, un título de marco o meta, o la
+                cuenta regresiva, y muestra lo que pongas en <b>tema</b> abajo. Lo cambiás una vez y cambia en todas las
+                pantallas (OBS lo toma en unos 15 segundos).
+              </li>
               <li>
                 El <b>marco de ventana</b> es solo el borde: poné la cámara o la captura de la ventana debajo de esta
                 fuente, en el mismo lugar.
@@ -578,18 +601,40 @@ export default function Pagina() {
                     </div>
                   ))}
                 </div>
-                {def.opciones.map((x) => (
-                  <Campo
-                    key={x.clave}
-                    x={x}
-                    valor={{ ...Piezas().predeterminadas(pieza.tipo), ...pieza.op }[x.clave]}
-                    cambiar={(v) => {
-                      pieza.op = { ...pieza.op, [x.clave]: v }
-                      redibujar(elegida)
-                      marcar(true)
-                    }}
-                  />
-                ))}
+                {(() => {
+                  const valores = { ...Piezas().predeterminadas(pieza.tipo), ...pieza.op }
+                  const campo = (x: Opcion) => (
+                    <Campo
+                      key={x.clave}
+                      x={x}
+                      valor={valores[x.clave]}
+                      cambiar={(v) => {
+                        pieza.op = { ...pieza.op, [x.clave]: v }
+                        redibujar(elegida)
+                        marcar(true)
+                        if (x.clave === 'fuente') setPanel((n) => n + 1) // aparece o se va el nombre de la fuente de Google
+                      }}
+                    />
+                  )
+                  const visibles = def.opciones.filter((x) => x.clave !== 'fuente_google' || valores.fuente === 'google')
+                  const anim = visibles.filter((x) => ANIMACION.includes(x.clave))
+                  return (
+                    <>
+                      {visibles.filter((x) => !ANIMACION.includes(x.clave)).map(campo)}
+                      {anim.length > 0 && (
+                        <div className="grid gap-3 border-t pt-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium">Animación</span>
+                            <Button variant="outline" size="sm" onClick={() => vivas.current[elegida]?.probar?.()}>
+                              <PlayIcon aria-hidden /> Probar animación
+                            </Button>
+                          </div>
+                          {anim.map(campo)}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
                 <Campo
                   x={{ clave: 'clase', tipo: 'texto', nombre: 'Clase CSS (para el CSS propio)' }}
                   valor={pieza.clase || ''}
@@ -613,6 +658,15 @@ export default function Pagina() {
             )}
           </Seccion>
         </div>
+
+        {listo && (
+          <Textos
+            alGuardar={(t) => {
+              Piezas().MUESTRA.textos = t
+              dibujar()
+            }}
+          />
+        )}
 
         <Collapsible className="rounded-xl border bg-card text-sm">
           <CollapsibleTrigger className="group flex w-full items-center gap-2 px-4 py-3 font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
@@ -639,10 +693,10 @@ export default function Pagina() {
               Se ve al toque en el lienzo y vale solo para esta pantalla. Cada pieza tiene <code>data-tipo</code> (
               <code>[data-tipo="chat"]</code>, <code>alertas</code>, <code>marco</code>, <code>texto</code>,{' '}
               <code>titulo</code>, <code>viewers</code>, <code>meta</code>, <code>lluvia</code>, <code>ultimo</code>,{' '}
-              <code>cuenta</code>) y la clase que le pongas en su panel. Adentro: <code>.pz-mensaje</code>,{' '}
+              <code>cuenta</code>, <code>imagen</code>) y la clase que le pongas en su panel. Adentro: <code>.pz-mensaje</code>,{' '}
               <code>.pz-quien</code>, <code>.pz-alerta</code>, <code>.pz-alerta-quien</code>, <code>.pz-marco</code>,{' '}
               <code>.pz-marco-titulo</code>, <code>.pz-bloque</code>, <code>.pz-meta</code>, <code>.pz-meta-barra i</code>,{' '}
-              <code>.pz-gota</code> y <code>.emote</code>. Los colores y tamaños del panel van directo en cada pieza: para
+              <code>.pz-gota</code>, <code>.pz-imagen</code> y <code>.emote</code>. Los colores y tamaños del panel van directo en cada pieza: para
               pisarlos, usá <code>!important</code>. Se pueden usar fuentes de Google con <code>@import</code>.
             </p>
           </CollapsibleContent>
@@ -677,6 +731,7 @@ export default function Pagina() {
 /** Un campo de opciones, según el tipo que dice el esquema de la pieza. */
 function Campo({ x, valor, cambiar }: { x: Opcion; valor: unknown; cambiar: (v: unknown) => void }) {
   const id = React.useId()
+  if (x.tipo === 'imagen') return <CampoImagen x={x} valor={String(valor || '')} cambiar={cambiar} />
   if (x.tipo === 'si')
     return (
       <div className="flex items-center gap-2">
@@ -732,5 +787,145 @@ function Campo({ x, valor, cambiar }: { x: Opcion; valor: unknown; cambiar: (v: 
       <Label htmlFor={id} className="text-muted-foreground">{x.nombre}</Label>
       {control}
     </div>
+  )
+}
+
+/** La imagen de la pieza: una subida (se elige de la lista o se sube acá) o un link https. */
+function CampoImagen({ x, valor, cambiar }: { x: Opcion; valor: string; cambiar: (v: unknown) => void }) {
+  const id = React.useId()
+  const [lista, setLista] = React.useState<string[]>([])
+  const [actual, setActual] = React.useState(valor)
+  const [aviso, setAviso] = React.useState('')
+  const [subiendo, setSubiendo] = React.useState(false)
+  React.useEffect(() => {
+    get<string[]>('/api/pantallas/imagenes').then(setLista, () => setAviso('No pude leer las imágenes subidas.'))
+  }, [])
+  const usar = (v: string) => {
+    setActual(v)
+    cambiar(v)
+  }
+  async function subir(archivo: File) {
+    setAviso('')
+    setSubiendo(true)
+    try {
+      const r = await fetch('/api/pantallas/imagen?' + encodeURIComponent(archivo.name), {
+        method: 'POST',
+        headers: { 'X-Panel': '1', 'Content-Type': 'application/octet-stream' },
+        body: archivo,
+      })
+      const j = await r.json().catch(() => ({ error: `La app contestó ${r.status}.` }))
+      if (!r.ok) return setAviso(j.error)
+      setLista(j.imagenes)
+      usar(j.nombre)
+    } catch {
+      setAviso('La app no contestó.')
+    } finally {
+      setSubiendo(false)
+    }
+  }
+  const esLink = actual.startsWith('https://')
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id} className="text-muted-foreground">{x.nombre}</Label>
+      <Select value={esLink ? '' : actual} onValueChange={usar}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue placeholder={lista.length ? 'Elegí una imagen subida' : 'Todavía no subiste ninguna'} />
+        </SelectTrigger>
+        <SelectContent>
+          {lista.map((n) => (
+            <SelectItem key={n} value={n}>{n}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Label htmlFor={id + '-subir'} className="text-muted-foreground">Subir una (png, jpg, gif o webp, hasta 15 MB)</Label>
+      <Input
+        id={id + '-subir'}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        disabled={subiendo}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) void subir(f)
+          e.target.value = ''
+        }}
+      />
+      <Label htmlFor={id + '-link'} className="text-muted-foreground">O un link</Label>
+      <Input
+        id={id + '-link'}
+        placeholder="https://…"
+        defaultValue={esLink ? actual : ''}
+        onChange={(e) => {
+          const t = e.target.value.trim()
+          if (/^https:\/\/\S+$/.test(t)) usar(t)
+        }}
+      />
+      {aviso && <p role="status" className="text-sm text-destructive">{aviso}</p>}
+    </div>
+  )
+}
+
+/** Los textos compartidos: {tema} en cualquier pieza de cualquier pantalla muestra el de "tema". */
+function Textos({ alGuardar }: { alGuardar: (t: Record<string, string>) => void }) {
+  const [filas, setFilas] = React.useState<{ k: string; v: string; id: number }[]>([])
+  const [aviso, setAviso] = React.useState<{ texto: string; error?: boolean }>()
+  const [sucio, setSucio] = React.useState(false)
+  const n = React.useRef(0)
+  React.useEffect(() => {
+    get<Record<string, string>>('/api/pantallas/textos').then(
+      (t) => setFilas(Object.entries(t).map(([k, v]) => ({ k, v, id: n.current++ }))),
+      () => setAviso({ texto: 'No pude leer los textos.', error: true }),
+    )
+  }, [])
+  const cambiar = (id: number, campo: 'k' | 'v', valor: string) => {
+    setFilas((fs) => fs.map((f) => (f.id === id ? { ...f, [campo]: valor } : f)))
+    setSucio(true)
+  }
+  async function guardar() {
+    setAviso(undefined)
+    try {
+      const t = await post<Record<string, string>>('/api/pantallas/textos', Object.fromEntries(filas.filter((f) => f.k.trim()).map((f) => [f.k.trim(), f.v])))
+      setSucio(false)
+      setAviso({ texto: 'Guardados. OBS los toma en unos 15 segundos.' })
+      alGuardar(t)
+    } catch (e) {
+      setAviso({ texto: e instanceof ApiError ? e.message : 'La app no contestó.', error: true })
+    }
+  }
+  return (
+    <Seccion
+      titulo="Textos compartidos"
+      descripcion={<>Escribí <code>{'{tema}'}</code> en una pieza y muestra lo que pongas acá en tema, en todas las pantallas.</>}
+    >
+      <div className="grid gap-2">
+        {filas.map((f) => (
+          <div key={f.id} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto] items-center gap-2">
+            <Input aria-label="Nombre" placeholder="tema" maxLength={30} value={f.k} onChange={(e) => cambiar(f.id, 'k', e.target.value.toLowerCase())} />
+            <Input aria-label={`Texto de ${f.k || 'este nombre'}`} placeholder="Ranked hasta Inmortal" maxLength={300} value={f.v} onChange={(e) => cambiar(f.id, 'v', e.target.value)} />
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Quitar ${f.k || 'este texto'}`}
+              onClick={() => {
+                setFilas((fs) => fs.filter((x) => x.id !== f.id))
+                setSucio(true)
+              }}
+            >
+              <XIcon />
+            </Button>
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setFilas((fs) => [...fs, { k: '', v: '', id: n.current++ }])} disabled={filas.length >= 30}>
+            <PlusIcon aria-hidden /> Agregar texto
+          </Button>
+          <Button size="sm" onClick={() => void guardar()} disabled={!sucio}>
+            <SaveIcon aria-hidden /> Guardar textos
+          </Button>
+          {aviso && (
+            <p role="status" className={cn('text-sm', aviso.error ? 'text-destructive' : 'text-muted-foreground')}>{aviso.texto}</p>
+          )}
+        </div>
+      </div>
+    </Seccion>
   )
 }
