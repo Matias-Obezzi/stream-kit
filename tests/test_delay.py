@@ -14,7 +14,30 @@ import tempfile
 import time
 
 HERE = _os.path.join(_RAIZ, 'streamkit')
+os.environ['STREAMKIT_DATOS'] = tempfile.mkdtemp()  # no toca tus datos
+os.environ['STREAMKIT_PUERTOS'] = '48712'  # ni los puertos de tu Stream Kit abierto
 import delay  # noqa: E402
+import threading, urllib.error, urllib.request  # noqa: E402
+
+# la API del núcleo: sin la clave no contesta; con la clave maneja el delay. El botón de StreamDock, con su propia clave
+b = delay.Bridge({'delay_seconds': 1, 'deck_token': 'boton'}, 'ffmpeg', [])
+threading.Thread(target=delay.api, args=(b, os.path.join(os.environ['STREAMKIT_DATOS'], 'c.json'), 'secreto', None), daemon=True).start()
+def pedir(ruta, metodo='GET', clave='secreto'):
+    for _ in range(50):
+        try:
+            r = urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{delay.PUERTO_NUCLEO}{ruta}', method=metodo,
+                                       data=b'' if metodo == 'POST' else None, headers={'X-Nucleo': clave}), timeout=5)
+            return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, b''
+        except OSError:
+            time.sleep(0.1)  # todavía arrancando
+assert pedir('/api/state', clave='otra')[0] == 403
+codigo, cuerpo = pedir('/api/state')
+assert codigo == 200 and json.loads(cuerpo)['mode'] == 'live' and json.loads(cuerpo)['destinations'] == []
+assert pedir('/api/delay', 'POST')[0] == 200 and b.want == 'delay'
+assert pedir('/api/deck/toggle?mal', 'POST')[0] == 403 and pedir('/api/deck/toggle?boton', 'POST')[0] == 200 and b.want == 'toggle'
+assert json.loads(pedir('/nucleo/deck_token', 'POST')[1]) == {'token': 'boton'}
 
 # sin OBS transmitiendo, el delay no arranca: si no, el video de relleno sale solo a las plataformas
 b = delay.Bridge({'delay_seconds': 1}, 'ffmpeg', [(9, 0, b'v', 'key'), (9, 33, b'v', 'frame')])
@@ -66,7 +89,7 @@ for mode in ('text', 'rewind'):
 
     # sus archivos (el video de relleno, los logs) van a la carpeta de la prueba, no a la tuya
     app = subprocess.Popen([sys.executable, '-u', os.path.join(HERE, 'delay.py'), os.path.join(tmp, 'test.json')],
-                           stdin=subprocess.PIPE, text=True, env={**os.environ, 'STREAMKIT_DATOS': tmp})
+                           stdin=subprocess.PIPE, text=True, env={**os.environ, 'STREAMKIT_DATOS': tmp, 'STREAMKIT_PUERTOS': str(48720 + len(mode))})
     time.sleep(4)
     obs = subprocess.Popen(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-re', '-f', 'lavfi', '-i',
                             'testsrc=s=640x360:r=30', '-f', 'lavfi', '-i', 'sine=f=440:r=48000', '-f', 'lavfi', '-i',

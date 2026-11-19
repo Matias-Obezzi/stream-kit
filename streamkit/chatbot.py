@@ -6,7 +6,8 @@
 import base64, collections, datetime, json, logging, logging.handlers, os, re, socket, ssl, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
 from cuentas import ALCANCES  # los permisos que pide el login de /config
-from rutas import BOT as AQUI, config as ruta_config
+import rutas
+from rutas import BOT as AQUI, PUERTO_BOT, config as ruta_config
 
 CONFIG = json.load(open(ruta_config(os.path.join("bot", "config.json")), encoding="utf-8"))
 TOKEN = os.path.join(AQUI, "token.json")  # no compartir: con esto se puede escribir y banear en el canal
@@ -24,8 +25,8 @@ eventos = {"lista": collections.deque(maxlen=300), "ultimo": 0, "sucio": False, 
 EVENTSUB = "eventsub.wss.twitch.tv"
 seguidores = set()  # seguir, dejar y volver a seguir no repite la alerta
 IRC, PUERTO_IRC = "irc.chat.twitch.tv", 6697
-PUERTO_CANDADO = 47613  # que no corran dos a la vez: duplicarían cada respuesta. También es por donde se lo reinicia
-PUERTO_ORDENES = 47615  # la vista de chat manda por acá borrar, timeout y ban: las sesiones de moderador las tiene el bot
+PUERTO_CANDADO = PUERTO_BOT  # que no corran dos a la vez: duplicarían cada respuesta. También es por donde se lo reinicia
+PUERTO_ORDENES = rutas.PUERTO_ORDENES  # la vista de chat manda por acá borrar, timeout y ban: las sesiones de moderador las tiene el bot
 ids_twitch = {}  # tu canal y el bot, por nombre: los llena sesion()
 log = logging.getLogger("chatbot")
 

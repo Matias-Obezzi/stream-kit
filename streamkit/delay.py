@@ -1,10 +1,11 @@
-"""Stream delay: OBS -> esta app (rtmp://127.0.0.1) -> Twitch, YouTube, Kick... todos con el mismo delay.
+"""Núcleo de transmisión: OBS -> esta app (rtmp://127.0.0.1) -> Twitch, YouTube, Kick... todos con el mismo delay.
 
 Reenvía el stream sin recodificar a cada destino. Al activar el delay manda un video de relleno
-mientras guarda lo que llega, y después sigue con lo guardado (atrasado).
-Uso: pythonw guardian.py   (arranca esto y el bot; panel en http://127.0.0.1:8080, ícono en la bandeja)
-     python delay.py [config.json]     solo el delay, para probar
-     python delay.py --streamdock      instala el botón del StreamDock
+mientras guarda lo que llega, y después sigue con lo guardado (atrasado). También tiene el ícono de la bandeja y los atajos.
+Es lo único que no se puede reiniciar en vivo, así que hace lo mínimo: la web (panel.py) corre aparte y le habla por api().
+Si cambiás este archivo o rutas.py, la versión nueva reinicia el núcleo (build.py saca la huella de los dos).
+Uso: pythonw app.py                    (el guardián arranca esto, la web y el bot)
+     python delay.py [config.json]     solo el núcleo, para probar (d / l / q por consola)
 """
 import ctypes
 import faulthandler
@@ -26,16 +27,9 @@ from ctypes import wintypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
 
-import canal
-import cuentas
-import deck
-import metricas
-import obs
-import mcp
-import panel_bot
-import pantallas
-from rutas import DATOS, RAIZ, RECURSOS, WEB, config as ruta_config
+from rutas import CLAVE_NUCLEO, DATOS, PUERTO_NUCLEO, RECURSOS, config as ruta_config
 
+SALIDA_ACTUALIZAR = 3  # código con el que sale cuando el guardián lo pasa a otra versión (0 es Salir: cierra todo)
 VIDEOS = os.path.join(DATOS, 'videos')
 IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
 UPLOAD_EXT = IMAGE_EXT + ('.mp4', '.mov', '.mkv', '.webm', '.flv', '.avi')
@@ -705,8 +699,10 @@ def tray(bridge, cfg, url, quit_app):
 
 
 def save_config(cfg, cfg_path):
-    with CFG_LOCK, open(cfg_path, 'w', encoding='utf-8') as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+    with CFG_LOCK:  # entera o nada: la web la lee desde otro proceso
+        with open(cfg_path + '.tmp', 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        os.replace(cfg_path + '.tmp', cfg_path)
 
 
 def apply_settings(bridge, cfg_path, changes):
@@ -733,289 +729,86 @@ def lan_ip():
             return '127.0.0.1'
 
 
-def panel(bridge, cfg_path):
-    cfg, port = bridge.cfg, bridge.cfg.get('panel_port', 8080)
-    lan = cfg.get('panel_lan', False)
-    if lan and not cfg.get('lan_key'):
-        cfg['lan_key'] = secrets.token_urlsafe(6)
-        save_config(cfg, cfg_path)
-
-    medidor = metricas.Medidor()
+def api(bridge, cfg_path, clave, salir):
+    """La API del núcleo: solo desde esta PC y con la clave de nucleo.clave. La usan la web (panel.py), que corre en
+    otro proceso para poder reiniciarla o actualizarla sin cortar el stream, y el guardián."""
+    cfg = bridge.cfg
 
     def partes():
-        """Cada proceso de Stream Kit, con lo que hace: los ffmpeg son hijos del delay, el bot y el guardián vienen del guardián."""
-        servicios = panel_bot.leer_json(panel_bot.SERVICIOS)
+        """Los procesos del núcleo, para /metricas: él y sus ffmpeg."""
         vivo = lambda p: p.pid if p and p.poll() is None else None
-        lista = [('Guardián', 'Levanta el delay y el bot, y los vuelve a levantar si se caen', servicios.get('pid'), None),
-                 ('Delay y web', 'Ordena el stream, guarda el delay y sirve este panel', os.getpid(), None),
-                 ('Bot', 'Chats de Twitch y Kick, comandos, alertas y moderación', servicios.get('bot', {}).get('pid'), None),
+        lista = [('Núcleo de transmisión', 'Recibe a OBS, guarda el delay y manda a cada plataforma', os.getpid(), None),
                  ('Recepción de OBS', 'ffmpeg que recibe el stream de OBS', vivo(bridge.ingest_proc), bridge.recibidos)]
-        for d in bridge.cfg.get('destinations', []):
+        for d in cfg.get('destinations', []):
             o = bridge.outputs.get(d['id'])
             if o:
                 lista.append((f"Envío a {d['name']}", 'ffmpeg que manda el stream a la plataforma', vivo(o.proc), o.enviados))
-        for clave, nombre in (('in', 'Vista previa de OBS'), ('out', 'Vista previa del stream')):
-            lista.append((nombre, 'ffmpeg del panel de Delay: se apaga solo al cerrarlo', vivo(bridge.previews[clave].proc), None))
+        for k, nombre in (('in', 'Vista previa de OBS'), ('out', 'Vista previa del stream')):
+            lista.append((nombre, 'ffmpeg del panel de Delay: se apaga solo al cerrarlo', vivo(bridge.previews[k].proc), None))
         return lista
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
-        def local(self):
-            return self.client_address[0] == '127.0.0.1'
-
-        def allowed(self):
-            """Desde esta PC siempre; desde el celular, con la clave del link (queda en una cookie)."""
-            # Host: una página web con un dominio que apunte a esta IP (DNS rebinding) no puede usar el panel
-            if self.headers.get('Host', '').rsplit(':', 1)[0] not in ('127.0.0.1', 'localhost', lan_ip()):
-                return False
-            if self.local():
-                return True
-            m = re.search(r'(?:^|;\s*)k=([\w-]+)', self.headers.get('Cookie', ''))
-            return lan and bool(m) and secrets.compare_digest(m[1], cfg['lan_key'])
-
-        def reply(self, code, body=b'', ctype='application/json'):
+        def reply(self, code, body=b'{}', ctype='application/json'):
             self.send_response(code)
             self.send_header('Content-Type', ctype)
-            self.send_header('Cache-Control', 'no-store')
-            # el botón de StreamDock y las alertas de OBS (archivos locales) corren en otra página. El chat es público igual
-            if self.path.startswith(('/api/deck', '/api/eventos')):
-                self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-
-        def page(self, name, ctype='text/html; charset=utf-8'):
-            with open(os.path.join(WEB, name), 'rb') as f:
-                return self.reply(200, f.read(), ctype)
 
         def error(self, msg):
             return self.reply(400, json.dumps({'error': msg}).encode())
 
-        def mcp(self):
-            """MCP para agentes de IA (ver mcp.py). Solo desde esta PC, y nunca desde una página web: el navegador manda
-            Origin, y JSON obliga a pedir permiso antes (CORS), que acá no se da."""
-            origen = self.headers.get('Origin')
-            if not self.local() or (origen and origen not in (f'http://127.0.0.1:{port}', f'http://localhost:{port}')):
-                return self.reply(403)
-            if not (self.headers.get('Content-Type') or '').startswith('application/json'):
-                return self.reply(415)
-            size = int(self.headers.get('Content-Length') or 0)
-            try:
-                mensaje = json.loads(self.rfile.read(size) if 0 < size <= 1 << 20 else b'')
-            except ValueError:
-                return self.reply(400, json.dumps({'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': 'JSON roto.'}}).encode())
-            version = getattr(sys.modules.get('__main__'), 'VERSION', '')
-            respuesta = mcp.atender(mensaje, port, version)
-            return self.reply(202) if respuesta is None else self.reply(200, json.dumps(respuesta, ensure_ascii=False).encode())
+        def permitido(self):
+            return self.client_address[0] == '127.0.0.1' and secrets.compare_digest(self.headers.get('X-Nucleo', ''), clave)
 
         def do_GET(self):
-            path, _, query = self.path.partition('?')
-            if path == '/' and lan and query.startswith('k='):  # link del celular: guarda la clave y la saca de la URL
-                if not secrets.compare_digest(unquote(query[2:]), cfg['lan_key']):
-                    return self.reply(403, 'Link viejo o incompleto: copiá el de nuevo del panel en la PC.'.encode(),
-                                      'text/plain; charset=utf-8')
-                self.send_response(303)
-                self.send_header('Set-Cookie', f"k={cfg['lan_key']}; Path=/; HttpOnly; SameSite=Strict; "
-                                               'Max-Age=31536000')
-                self.send_header('Location', '/')
-                return self.end_headers()
-            if not self.allowed():
-                return self.reply(403, 'Abrí el link que muestra el panel en la PC.'.encode(), 'text/plain; charset=utf-8')
-            if path == '/':
-                return self.page('inicio.html')
-            if path == '/delay':
-                return self.page('panel.html')
-            if path == '/bot':
-                return self.page('bot.html')
-            if path == '/chat':
-                return self.page('chat.html')
-            if path == '/pantallas':
-                return self.page('pantallas.html')
-            if path == '/mcp':  # el MCP solo habla por POST
-                self.send_response(405)
-                self.send_header('Allow', 'POST')
-                self.send_header('Content-Length', '0')
-                return self.end_headers()
-            if re.fullmatch(r'/pantalla/[a-z0-9]{1,16}', path):  # lo que muestra OBS
-                return self.page('pantalla.html')
-            if path == '/api/pantallas':
-                return self.reply(200, json.dumps(pantallas.leer()).encode())
-            if path == '/api/pantallas/datos':
-                return self.reply(200, json.dumps(pantallas.datos()).encode())
-            if path == '/canal':
-                return self.page('canal.html')
-            if path in ('/config', '/api/config') and not self.local():  # claves y sesiones: solo desde esta PC
-                return self.reply(403, 'La configuración solo se abre desde la PC.'.encode(), 'text/plain; charset=utf-8')
-            if path == '/config':
-                return self.page('config.html')
-            if path == '/api/config':
-                return self.reply(200, json.dumps(cuentas.leer()).encode())
-            if path == '/api/botonera':
-                return self.reply(200, json.dumps(deck.apps()).encode())
-            if path == '/api/obs':
-                if not self.local():
-                    return self.reply(403)
-                urls = [d.get('url') for d in obs.docks()]
-                return self.reply(200, json.dumps({**obs.estado(cfg['listen_port']), 'a_la_app': bridge.obs_connected,
-                                                   'dock_panel': f'http://127.0.0.1:{port}/' in urls,
-                                                   'dock_chat': f'http://127.0.0.1:{port}/chat' in urls}).encode())
-            if path == '/api/canal':
-                return self.reply(200, json.dumps(canal.leer()).encode())
-            if path == '/api/canal/presets':
-                return self.reply(200, json.dumps(canal.presets()).encode())
-            if path == '/api/canal/buscar':
-                return self.reply(200, json.dumps(canal.buscar(unquote(query[2:]) if query.startswith('q=') else '')).encode())
-            if path == '/api/eventos':
-                desde = query[6:] if query.startswith('desde=') else ''
-                if desde and not desde.isdigit():
-                    return self.error('desde tiene que ser un número.')
-                return self.reply(200, json.dumps(panel_bot.eventos(int(desde) if desde else None)).encode())
-            if path == '/llms.txt':  # la guía para agentes de IA, con la lista de piezas al día
-                with open(os.path.join(RAIZ, 'llms.txt'), encoding='utf-8') as f:
-                    return self.reply(200, (f.read() + pantallas.referencia()).encode(), 'text/markdown; charset=utf-8')
-            if path == '/estilo.css':
-                return self.page('estilo.css', 'text/css; charset=utf-8')
-            if path in ('/plataformas.js', '/emotes.js', '/nav.js'):
-                return self.page(path[1:], 'text/javascript; charset=utf-8')
-            if path == '/piezas.js':  # con su esquema adelante: así carga de una vez, sin pedir otro archivo
-                with open(os.path.join(WEB, 'piezas.json'), 'rb') as f, open(os.path.join(WEB, 'piezas.js'), 'rb') as g:
-                    return self.reply(200, b'window.PIEZAS_ESQUEMA = ' + f.read() + b';\n' + g.read(), 'text/javascript; charset=utf-8')
-            if path == '/api/chat/quienes':
-                try:
-                    return self.reply(200, json.dumps(panel_bot.quienes()).encode())
-                except ValueError as e:
-                    return self.error(str(e))
-            if path == '/api/bot':
-                return self.reply(200, json.dumps(panel_bot.estado_y_config()).encode())
+            if not self.permitido():
+                return self.reply(403)
+            path = self.path.partition('?')[0]
             if path == '/api/state':
-                s = bridge.status()
-                if lan and self.local():  # la clave solo se le muestra a la PC
-                    s['phone'] = f"http://{lan_ip()}:{port}/?k={cfg['lan_key']}"
-                return self.reply(200, json.dumps(s).encode())
-            if path == '/metricas':
-                return self.page('metricas.html')
-            if path == '/api/metricas':
-                return self.reply(200, json.dumps(medidor.medir(partes())).encode())
+                return self.reply(200, json.dumps(bridge.status()).encode())
             if path == '/api/deck':
                 s = bridge.status(full=False)
                 return self.reply(200, json.dumps({k: s[k] for k in ('mode', 'delay', 'filler_left')}).encode())
             if path in ('/snap/in.jpg', '/snap/out.jpg'):
                 jpg = bridge.previews[path[6:-4]].latest()
-                return self.reply(200, jpg, 'image/jpeg') if jpg else self.reply(204)
+                return self.reply(200, jpg, 'image/jpeg') if jpg else self.reply(204, b'')
+            if path == '/nucleo/partes':
+                return self.reply(200, json.dumps(partes()).encode())
             self.reply(404)
 
         def do_POST(self):
-            path, _, query = self.path.partition('?')
-            if not self.allowed():
+            if not self.permitido():
                 return self.reply(403)
+            path, _, query = self.path.partition('?')
             if path == '/api/deck/toggle':  # botón de StreamDock: necesita la clave que se le instaló
-                token = bridge.cfg.get('deck_token', '')
+                token = cfg.get('deck_token', '')
                 if not token or not secrets.compare_digest(unquote(query), token):
                     return self.reply(403)
                 bridge.request('toggle')
-                return self.reply(200, b'{}')
-            if path == '/mcp':
-                return self.mcp()
-            # header propio: una página web cualquiera no puede mandarlo sin permiso (CORS), así no maneja el panel
-            if self.headers.get('X-Panel') != '1':
-                return self.reply(403)
-            size = int(self.headers.get('Content-Length') or 0)
+                return self.reply(200)
             if path in ('/api/delay', '/api/live'):
                 bridge.request(path[5:])
-                return self.reply(200, b'{}')
-            if path == '/api/upload':
-                name = os.path.basename(unquote(query))
-                if not name.lower().endswith(UPLOAD_EXT):
-                    return self.error('Formato no soportado.')
-                os.makedirs(VIDEOS, exist_ok=True)
-                with open(os.path.join(VIDEOS, name), 'wb') as f:
-                    while size:
-                        chunk = self.rfile.read(min(size, 1 << 20))
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        size -= len(chunk)
-                return self.reply(200, json.dumps({'name': name}).encode())
+                return self.reply(200)
+            if path == '/nucleo/deck_token':  # para instalar el botón: la clave queda en la config, que es del núcleo
+                if not cfg.get('deck_token'):
+                    cfg['deck_token'] = secrets.token_urlsafe(16)
+                    save_config(cfg, cfg_path)
+                return self.reply(200, json.dumps({'token': cfg['deck_token']}).encode())
+            if path == '/nucleo/salir':  # el guardián lo pasa a una versión nueva (solo sin stream)
+                self.reply(200)
+                threading.Timer(0.3, salir).start()
+                return
+            size = int(self.headers.get('Content-Length') or 0)
             try:
                 s = json.loads(self.rfile.read(size) or b'{}')
             except ValueError:
                 return self.error('Pedido inválido.')
             if path == '/api/settings':
                 return self.settings(s)
-            if path == '/api/bot/guardar':
-                try:
-                    return self.reply(200, json.dumps({'cambio': panel_bot.guardar(s)}).encode())
-                except (OSError, ValueError) as e:
-                    return self.error(str(e))
-            if path == '/api/canal/guardar':
-                try:
-                    return self.reply(200, json.dumps(canal.guardar(s)).encode())
-                except ValueError as e:
-                    return self.error(str(e))
-            if path in ('/api/canal/presets/guardar', '/api/canal/presets/borrar'):
-                try:
-                    if path.endswith('borrar'):
-                        canal.borrar_preset(s.get('nombre'))
-                    else:
-                        canal.guardar_preset(s)
-                    return self.reply(200, json.dumps(canal.presets()).encode())
-                except (OSError, ValueError) as e:
-                    return self.error(str(e))
-            if path in ('/api/pantallas/guardar', '/api/pantallas/borrar'):
-                try:
-                    if path.endswith('borrar'):
-                        pantallas.borrar(s.get('id'))
-                        return self.reply(200, b'{}')
-                    return self.reply(200, json.dumps(pantallas.guardar(s)).encode())
-                except ValueError as e:
-                    return self.error(str(e))
-            if path == '/api/chat/accion':
-                try:
-                    panel_bot.accion(s)
-                    return self.reply(200, b'{}')
-                except ValueError as e:
-                    return self.error(str(e))
-            if path == '/api/bot/reiniciar':
-                panel_bot.reiniciar()
-                return self.reply(200, b'{}')
-            if path in ('/api/botonera/instalar', '/api/obs/dock'):
-                if not self.local():
-                    return self.reply(403)
-                try:
-                    if path == '/api/botonera/instalar':
-                        return self.reply(200, json.dumps(install_streamdock(bridge.cfg, cfg_path)).encode())
-                    dock = {'panel': ('Stream Kit', f'http://127.0.0.1:{port}/'), 'chat': ('Chat', f'http://127.0.0.1:{port}/chat')}.get(s.get('cual'))
-                    if not dock:
-                        return self.error('Pedido inválido.')
-                    return self.reply(200, json.dumps(obs.agregar_dock(*dock, cerrar_obs=bool(s.get('cerrar')))).encode())
-                except (OSError, ValueError) as e:
-                    return self.error(str(e))
-            if path == '/api/obs/configurar':
-                if not self.local():
-                    return self.reply(403)
-                try:
-                    r = obs.configurar(cfg['listen_port'], cerrar_obs=bool(s.get('cerrar')))
-                except (OSError, ValueError) as e:
-                    return self.error(str(e))
-                anterior, r['anterior'] = r['anterior'], None  # la clave no vuelve a la página
-                if anterior and not any(d['url'] == anterior[1] for d in bridge.cfg.get('destinations', [])):
-                    bridge.cfg.setdefault('destinations', []).append(
-                        {'id': secrets.token_hex(4), 'name': anterior[0], 'url': anterior[1], 'key': anterior[2], 'enabled': True})
-                    save_config(bridge.cfg, cfg_path)
-                    bridge.sync_outputs()
-                    r['importado'] = anterior[0]
-                return self.reply(200, json.dumps(r).encode())
-            if path in ('/api/config/guardar', '/api/config/conectar'):
-                if not self.local():
-                    return self.reply(403)
-                try:
-                    if path.endswith('guardar'):
-                        cuentas.guardar(s)
-                        return self.reply(200, json.dumps(cuentas.leer()).encode())
-                    return self.reply(200, json.dumps(cuentas.empezar(s.get('tipo'))).encode())
-                except (OSError, ValueError) as e:
-                    return self.error(str(e))
             if path.startswith('/api/destinations/'):
                 return self.destinations(path.rsplit('/', 1)[1], s)
             self.reply(404)
@@ -1051,7 +844,7 @@ def panel(bridge, cfg_path):
                 return self.error(f'El delay tiene que quedar entre 5 s y 10 min (así daría {seconds:g} s).')
             changes['delay_seconds'] = seconds
             threading.Thread(target=apply_settings, args=(bridge, cfg_path, changes), daemon=True).start()
-            return self.reply(200, b'{}')
+            return self.reply(200)
 
         def destinations(self, action, s):
             dests = bridge.cfg.setdefault('destinations', [])
@@ -1085,18 +878,9 @@ def panel(bridge, cfg_path):
                     return self.reply(404)
             save_config(bridge.cfg, cfg_path)
             bridge.sync_outputs()
-            return self.reply(200, b'{}')
+            return self.reply(200)
 
-    ThreadingHTTPServer(('0.0.0.0' if lan else '127.0.0.1', port), Handler).serve_forever()
-
-
-def install_streamdock(cfg, cfg_path):
-    """El botón de delay en Stream Deck o StreamDock, con una clave propia: así ninguna página web puede tocar el delay."""
-    cfg['deck_token'] = cfg.get('deck_token') or secrets.token_urlsafe(16)
-    save_config(cfg, cfg_path)
-    hechas = deck.instalar(os.path.join(RECURSOS, 'streamdock'), f"http://127.0.0.1:{cfg.get('panel_port', 8080)}", cfg['deck_token'])
-    print('Botón instalado en: ' + (', '.join(h['nombre'] for h in hechas) or 'ninguna botonera (no encontré Stream Deck ni StreamDock)'))
-    return hechas
+    ThreadingHTTPServer(('127.0.0.1', PUERTO_NUCLEO), Handler).serve_forever()
 
 
 def load_config(cfg_path):
@@ -1135,14 +919,13 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     cfg_path = args[0] if args else ruta_config('config.json')
     cfg = load_config(cfg_path)
-    if '--streamdock' in sys.argv:
-        return install_streamdock(cfg, cfg_path)
-    port = cfg.get('panel_port', 8080)
-    url = f'http://127.0.0.1:{port}'
-    with socket.socket() as s:  # ya arrancó solo con Windows: un segundo puente pelearía por los puertos
-        if port and s.connect_ex(('127.0.0.1', port)) == 0:
-            webbrowser.open(url)
-            sys.exit('El puente ya está abierto: te abrí el panel.')
+    url = f"http://127.0.0.1:{cfg.get('panel_port', 8080)}"
+    with socket.socket() as s:  # dos núcleos pelearían por el puerto de OBS
+        if s.connect_ex(('127.0.0.1', PUERTO_NUCLEO)) == 0:
+            sys.exit('El núcleo ya está corriendo.')
+    if cfg.get('panel_lan') and not cfg.get('lan_key'):  # la config es del núcleo: la web solo la lee
+        cfg['lan_key'] = secrets.token_urlsafe(6)
+        save_config(cfg, cfg_path)
     restarted = next((a.split('=')[1] for a in sys.argv if a.startswith('--restarted=')), None)
     if sys.stdout is None:  # pythonw (sin consola): los mensajes van a un archivo
         log = os.path.join(DATOS, 'delay.log')
@@ -1151,7 +934,9 @@ def main():
         f = open(log, 'w', encoding='utf-8', buffering=1)
         faulthandler.enable(f)  # cierres de Python a bajo nivel (sin esto pythonw no deja rastro)
         sys.stdout = sys.stderr = Log(f)
-    if restarted:
+    if restarted == 'actualizacion':
+        print('Núcleo reiniciado para pasar a la versión nueva.', flush=True)
+    elif restarted:
         print(f'La app se había cerrado sola (código {restarted}, detalle en delay.old.log): se reabrió.', flush=True)
     ffmpeg = cfg.get('ffmpeg') or 'ffmpeg'
     try:
@@ -1163,13 +948,13 @@ def main():
     except RuntimeError as e:
         sys.exit(str(e))
 
-    def quit_app():
-        print('App cerrada (Salir o fin normal).', flush=True)  # si el log corta sin esto, la mataron de afuera
+    def quit_app(codigo=0):
+        print('Núcleo cerrado (Salir o fin normal).' if codigo == 0 else 'Núcleo cerrado para actualizarlo.', flush=True)  # si el log corta sin esto, la mataron de afuera
         for p in [bridge.ingest_proc, *(o.proc for o in bridge.outputs.values()),
                   *(v.proc for v in bridge.previews.values())]:
             if p:
                 p.kill()
-        os._exit(0)
+        os._exit(codigo)
 
     def console():  # comandos d / l / q cuando hay consola (pruebas, o abierto con python en vez de pythonw)
         for line in sys.stdin:
@@ -1179,14 +964,16 @@ def main():
             if cmd in ('d', 'l'):
                 bridge.request('delay' if cmd == 'd' else 'live')
 
-    for target in (bridge.ingest, bridge.run, lambda: panel(bridge, cfg_path)):
+    clave = secrets.token_urlsafe(24)
+    with open(CLAVE_NUCLEO + '.tmp', 'w', encoding='utf-8') as f:
+        f.write(clave)
+    os.replace(CLAVE_NUCLEO + '.tmp', CLAVE_NUCLEO)
+    for target in (bridge.ingest, bridge.run, lambda: api(bridge, cfg_path, clave, lambda: quit_app(SALIDA_ACTUALIZAR))):
         threading.Thread(target=target, daemon=True).start()
     if sys.stdin:
         threading.Thread(target=console, daemon=True).start()
-    print(f"Panel: {url}\nAtajos: {cfg['hotkey_delay']} = activar delay, {cfg['hotkey_live']} = volver a vivo.",
+    print(f"Núcleo listo. Panel: {url}\nAtajos: {cfg['hotkey_delay']} = activar delay, {cfg['hotkey_live']} = volver a vivo.",
           flush=True)
-    if cfg.get('open_panel', True) and not restarted:  # reabierta en pleno stream: no tirarte el navegador encima
-        webbrowser.open(url)
     try:
         tray(bridge, cfg, url, quit_app)
         print('Windows cerró la ventana de la bandeja.', flush=True)

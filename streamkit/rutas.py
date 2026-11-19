@@ -16,6 +16,10 @@ RECURSOS = os.path.join(RAIZ, 'recursos')
 DATOS = os.environ.get('STREAMKIT_DATOS') or (os.path.dirname(sys.executable) if CONGELADO else os.path.join(RAIZ, 'datos'))
 BOT = os.path.join(DATOS, 'bot')  # config del bot, sesiones de Twitch y Kick, chat y logs del bot
 os.makedirs(BOT, exist_ok=True)
+# puertos locales entre los procesos. Otra base (STREAMKIT_PUERTOS) = otra instalación que no choca con esta, para pruebas
+PUERTOS = int(os.environ.get('STREAMKIT_PUERTOS') or 47612)
+PUERTO_GUARDIAN, PUERTO_BOT, PUERTO_ORDENES, PUERTO_NUCLEO = PUERTOS, PUERTOS + 1, PUERTOS + 3, PUERTOS + 4  # +2: login de Kick, fijo
+CLAVE_NUCLEO = os.path.join(DATOS, 'nucleo.clave')  # la web y el guardián le hablan al núcleo con esto; la crea el núcleo al arrancar
 
 
 def config(relativa):

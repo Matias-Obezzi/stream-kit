@@ -16,6 +16,10 @@
     <h2>Primeros pasos</h2>
     <ul class="lineas" id="pasos-lista"></ul>
   </section>
+  <section class="card version" id="version" hidden>
+    <div class="titulo"><h2 id="version-titulo">Versión</h2><button id="actualizar" hidden>Actualizar</button></div>
+    <p class="hint" id="version-texto"></p>
+  </section>
   <section class="servicios">
     <a class="card servicio" href="/delay">
       <div class="titulo"><h2>Delay</h2><span class="pill" id="delay-pill">Conectando…</span></div>
@@ -105,11 +109,11 @@ function plataforma(nombre, valor) {
 async function tick() {
   let delay, info;
   try {
-    [delay, info] = await Promise.all(['/api/state', '/api/bot'].map(u => fetch(u).then(r => r.json())));
+    [delay, info] = await Promise.all(['/api/state', '/api/bot'].map(u => fetch(u).then(r => r.ok ? r.json() : Promise.reject(r))));
   } catch {
-    // esta página la sirve el proceso del delay: si no contesta, es él el que no está
+    // el núcleo (o la web, si se está pasando a una versión nueva) no contesta: el guardián lo levanta solo
     $('aviso').hidden = false;
-    $('aviso').textContent = 'El delay no contesta. Si se cayó, el guardián lo levanta en unos segundos y esta página se actualiza sola.';
+    $('aviso').textContent = 'El delay no contesta. Si se cayó o se está actualizando, el guardián lo levanta en unos segundos y esta página se actualiza sola.';
     pill('delay-pill', 'mal', 'Sin respuesta');
     pill('bot-pill', '', 'Sin datos');
     lineas('delay-lineas', []);
@@ -164,6 +168,36 @@ function pasos(delay) {
   lineas('pasos-lista', items);
 }
 leerConfig().then(tick); setInterval(tick, 2000); setInterval(leerConfig, 10000);
+
+// versión: se actualiza sin cortar el stream (la web y el bot al toque, el núcleo de transmisión cuando cortás)
+const nueva = (a, b) => { const n = v => v.split('.').map(Number); const [x, y] = [n(a), n(b)]; for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+let bajando = false;
+async function version() {
+  let v;
+  try { v = await (await fetch('/api/version')).json(); } catch { return setTimeout(version, 5000); }
+  const d = v.descarga, hay = v.ultima && nueva(v.ultima.version, v.actual);
+  bajando = ['Bajando…', 'Descomprimiendo…'].includes(d.estado);
+  $('version').hidden = false;
+  $('version-titulo').textContent = 'Stream Kit ' + v.actual;
+  $('actualizar').hidden = !v.congelado || !hay || bajando || d.estado === 'Instalada';
+  $('actualizar').textContent = hay ? 'Actualizar a la ' + v.ultima.version : 'Actualizar';
+  $('version-texto').textContent =
+    !v.congelado ? 'Desde el código fuente: actualizá con git pull.' :
+    bajando ? `${d.estado} la ${d.version}. No hace falta cortar el stream.` :
+    d.estado === 'Instalada' ? `Instalada la ${d.version}: la web se reinicia en unos segundos.` :
+    d.error ? d.error :
+    v.nucleo_pendiente ? `La web y el bot ya están en la ${v.servicios.web}. La parte que transmite se pasa sola cuando cortes el stream.` :
+    hay ? `Hay una versión nueva. Se instala sin cortar el stream: si cambia la parte que transmite, esa se pasa sola cuando cortes.` :
+    v.error ? v.error : 'Estás en la última versión.';
+  setTimeout(version, bajando || d.estado === 'Instalada' ? 2000 : 60000);
+}
+$('actualizar').onclick = async () => {
+  $('actualizar').disabled = true;
+  const r = await fetch('/api/actualizar', { method: 'POST', headers: { 'X-Panel': '1', 'Content-Type': 'application/json' }, body: '{}' });
+  if (!r.ok) { $('version-texto').textContent = (await r.json()).error; $('actualizar').disabled = false; return; }
+  version();
+};
+version();
 </script>
 <script src="/nav.js"></script>
 </body>

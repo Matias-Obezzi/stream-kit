@@ -40,7 +40,7 @@
   async function tick() {
     let s, info;
     try {
-      [s, info] = await Promise.all(['/api/state', '/api/bot'].map(u => fetch(u).then(r => r.json())));
+      [s, info] = await Promise.all(['/api/state', '/api/bot'].map(u => fetch(u).then(r => r.ok ? r.json() : Promise.reject(r))));
     } catch {
       barra.replaceChildren(item('dot err', 'Stream Kit no contesta'));
       return;

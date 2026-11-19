@@ -171,7 +171,7 @@ $('save').onclick = async () => {
 
 // --- estado ---
 async function tick() {
-  try { state = await (await fetch('/api/state')).json(); }
+  try { const r = await fetch('/api/state'); if (!r.ok) throw r; state = await r.json(); }
   catch { $('pill').textContent = 'Sin conexión con la app'; $('pill').className = 'pill'; return; }
   const s = state;
   $('pill').className = 'pill ' + s.mode;

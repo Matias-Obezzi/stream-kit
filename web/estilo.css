@@ -180,3 +180,8 @@ button.pill:hover { outline: 1px solid var(--muted); }
 .preset button { background: transparent; color: var(--text); border-radius: 0; padding: 7px 14px; }
 .preset button:hover { background: var(--line); }
 .preset .quitar { color: var(--muted); padding: 7px 12px 7px 8px; }
+
+/* versión en Inicio */
+.version .titulo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.version h2 { margin: 0; }
+.version .hint { margin-top: 8px; }

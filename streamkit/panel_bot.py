@@ -10,6 +10,7 @@ import threading
 import time
 import unicodedata
 
+import rutas
 from rutas import BOT, DATOS, config as ruta_config
 
 AQUI = DATOS
@@ -18,7 +19,7 @@ ESTADO_BOT = os.path.join(BOT, 'estado.json')
 EVENTOS_BOT = os.path.join(BOT, 'eventos.json')  # el chat y las alertas: los escribe el bot
 LOG_BOT = os.path.join(BOT, 'bot.log')
 SERVICIOS = os.path.join(AQUI, 'servicios.json')
-PUERTO_BOT = 47613  # conectarse a este puerto reinicia el bot: el guardián lo levanta de nuevo
+PUERTO_BOT = rutas.PUERTO_BOT  # conectarse a este puerto reinicia el bot: el guardián lo levanta de nuevo
 SIN_SENAL = 20  # el bot y el guardián escriben su estado cada 5 s
 LARGO_MENSAJE = 500  # el máximo de Twitch y Kick
 EDITABLES = ('comandos', 'espera_lista_comandos', 'timers', 'banear_frases', 'no_banear')
@@ -161,7 +162,7 @@ def eventos(desde=None):
             'ultimo': lista[-1].get('id', 0) if lista else 0}
 
 
-PUERTO_ORDENES = 47615  # borrar, timeout y ban desde la vista de chat: los hace el bot, que tiene las sesiones de moderador
+PUERTO_ORDENES = rutas.PUERTO_ORDENES  # borrar, timeout y ban desde la vista de chat: los hace el bot, que tiene las sesiones de moderador
 ACCIONES = ('borrar', 'timeout', 'banear', 'desbanear')
 
 

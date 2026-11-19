@@ -33,7 +33,16 @@ formas**. Algunos antivirus desconfían de los programas hechos con PyInstaller;
 código fuente (más abajo).
 
 Para que arranque con Windows, poné un acceso directo a `StreamKit.exe` en la carpeta de inicio (`Win + R` →
-`shell:startup`). Para actualizar, descomprimí la versión nueva encima: tu config y tus sesiones no se pisan.
+`shell:startup`).
+
+### Actualizar sin cortar el stream
+
+En Inicio, la tarjeta de la versión avisa cuando hay una nueva y la instala con **Actualizar**, aunque estés en vivo.
+Stream Kit corre en tres partes: el núcleo, que recibe a OBS y manda a las plataformas; la web; y el bot. La web y el
+bot pasan a la versión nueva en unos segundos. El núcleo solo se reinicia si la versión nueva lo cambia, y lo hace
+solo cuando OBS deja de transmitir. Las versiones nuevas quedan en `versiones/`, al lado de tus datos.
+
+También podés descomprimir la versión nueva encima, con Stream Kit cerrado: tu config y tus sesiones no se pisan.
 
 ## Configurar
 
@@ -128,7 +137,8 @@ La config, las sesiones de Twitch y Kick y los logs quedan al lado del .exe (`co
 suben a ningún lado; no los compartas, porque con ellos se puede escribir en tu chat y cambiar tu canal.
 Para guardarlos en otra carpeta, abrí el .exe con `--datos=CARPETA` (por ejemplo, en el acceso directo).
 
-Usa los puertos 8080 (panel), 1935 (OBS) y 47612 a 47615 (internos), solo en esta PC.
+Usa los puertos 8080 (panel), 1935 (OBS) y 47612 a 47616 (internos), solo en esta PC. Para correr una copia de prueba
+al lado, `STREAMKIT_PUERTOS` cambia la base de los internos (salvo el 47614 del login de Kick).
 
 ## Desde el código fuente
 
@@ -140,15 +150,15 @@ pythonw app.py
 
 | Carpeta | Qué tiene |
 | --- | --- |
-| `app.py` | Lo que arranca todo: el guardián, el delay o el bot según la opción |
-| `streamkit/` | El código: `delay.py` (OBS, delay y la web), `chatbot.py` (el bot), `guardian.py`, `cuentas.py` (claves y logins), `canal.py` (título), `pantallas.py`, `mcp.py`, `obs.py`, `deck.py`, `metricas.py` |
+| `app.py` | Lo que arranca todo: el guardián, el núcleo, la web o el bot según la opción |
+| `streamkit/` | El código: `delay.py` (el núcleo: OBS, delay y plataformas), `panel.py` (la web), `chatbot.py` (el bot), `guardian.py`, `versiones.py` (actualizar), `cuentas.py` (claves y logins), `canal.py` (título), `pantallas.py`, `mcp.py`, `obs.py`, `deck.py`, `metricas.py` |
 | `web/` | Las pantallas del panel |
 | `recursos/` | Íconos, el botón de Stream Deck y StreamDock, y las configs de ejemplo |
 | `tests/` | Las pruebas |
 | `datos/` | Tu config, tus sesiones y los logs cuando corrés desde el código. No se sube |
 
 Pruebas, sin internet y sin tocar tu config ni tu OBS: `python tests/test_chatbot.py`, y lo mismo con `test_cuentas`,
-`test_panel`, `test_pantallas`, `test_mcp`, `test_canal`, `test_metricas`, `test_obs`, `test_deck` y `test_delay` (este último simula OBS durante unos
+`test_panel`, `test_pantallas`, `test_mcp`, `test_canal`, `test_versiones`, `test_metricas`, `test_obs`, `test_deck` y `test_delay` (este último simula OBS durante unos
 minutos).
 
 Para armar el .exe en tu PC: `python -m pip install pyinstaller` y `python build.py`. Deja el zip en `dist/`, listo
