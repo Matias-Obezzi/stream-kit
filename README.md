@@ -21,6 +21,11 @@ Todo se maneja desde una web local (http://127.0.0.1:8080), con un tutorial en c
 estado (en vivo, delay, OBS, cada plataforma, el bot y cuántos miran) y abajo hay un menú para pasar de una pantalla
 a otra, que entra también en un panel angosto de OBS.
 
+La barra también muestra lo que manda OBS y lo que sale a cada plataforma (Mb/s), y el porcentaje de paquetes que
+la PC tuvo que reenviar. Si la subida no da abasto, la plataforma se va atrasando y lo dice ("8 s atrás"); a los 10 s
+Stream Kit tira lo atrasado para que no quede cada vez más lejos del vivo, y la imagen salta ("saltó"). Si lo ves
+seguido, bajá el bitrate en OBS o apagá una plataforma.
+
 ## Instalar
 
 1. Bajá el último `StreamKit-…-windows.zip` de [Releases](../../releases) y descomprimilo donde quieras, por ejemplo

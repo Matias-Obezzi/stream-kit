@@ -35,6 +35,7 @@ IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
 UPLOAD_EXT = IMAGE_EXT + ('.mp4', '.mov', '.mkv', '.webm', '.flv', '.avi')
 FLV_HEADER = b'FLV\x01\x05\x00\x00\x00\x09\x00\x00\x00\x00'
 RESYNC = (0, 0, b'', 'resync')
+ATRASO_MAXIMO = 10  # segundos que una plataforma puede quedar atrás por la red antes de tirar lo atrasado
 NO_WINDOW = 0x08000000  # la app corre sin consola: sin esto cada ffmpeg abriría una ventana negra
 LOW = NO_WINDOW | 0x4000  # además prioridad baja, para no competir con OBS
 CFG_LOCK = threading.Lock()
@@ -90,6 +91,17 @@ def track_key(typ, data):
 
 def hay_ffmpeg(ffmpeg):
     return bool(shutil.which(ffmpeg))
+
+
+def tcp_segmentos():
+    """(salidos, reenviados) de TCP en toda la PC, de Windows. None si no se puede leer."""
+    stats = (wintypes.DWORD * 15)()  # MIB_TCPSTATS: el 11 son los salidos y el 12 los reenviados
+    try:
+        if ctypes.windll.iphlpapi.GetTcpStatisticsEx(ctypes.byref(stats), 2) == 0:  # 2 = IPv4
+            return stats[10], stats[11]
+    except (AttributeError, OSError):
+        pass
+    return None
 
 
 def ffprobe(ffmpeg):
@@ -187,6 +199,10 @@ class Output:
         self.retry_at = 0.0
         self.need_key = self.closed = False
         self.enviados = 0  # bytes mandados a la plataforma, para /metricas
+        self.pendiente = 0  # bytes en la cola, todavía sin mandar: con la red lenta crece
+        self.descartes, self.ultimo_descarte = 0, 0.0  # veces que se tiró lo atrasado (el salto que ve la gente)
+        self.kbps = 0  # lo que salió en el último segundo, lo mide Bridge.medir
+        self.limite = 0  # bytes: ATRASO_MAXIMO segundos al ritmo de OBS, lo pone Bridge.medir (0: sin medir todavía)
 
     def running(self):
         return bool(self.proc and self.proc.poll() is None)
@@ -206,16 +222,25 @@ class Output:
             if k != 'key':
                 return
             self.need_key = False
-        if self.q.qsize() > 3000:  # ~10 s trabado (red lenta): se tira lo pendiente y sigue en el próximo cuadro clave
+        # red lenta: con más de ATRASO_MAXIMO s en la cola se tira lo pendiente y sigue en el próximo cuadro clave.
+        # La cuenta de paquetes queda por si todavía no hay medida (3000 son 20 a 40 s según los fps y las pistas)
+        if (self.limite and self.pendiente > self.limite) or self.q.qsize() > 3000:
             with self.q.mutex:
                 self.q.queue.clear()
             self.need_key = True
+            self.pendiente = 0
+            self.descartes += 1
+            self.ultimo_descarte = time.time()
+            safe = self.url.rsplit('/', 1)[0]  # sin la clave
+            print(f'[{safe}] la red no da abasto: se tiró lo atrasado (van {self.descartes}).', flush=True)
             return
         self.q.put(blob)
+        self.pendiente += len(blob)
 
     def header(self, blob, extra=False):
         if self.running() and not self.closed and (self.vod_track or not extra):
             self.q.put(blob)
+            self.pendiente += len(blob)
 
     def stop(self):
         """Termina la transmisión en ese destino (OBS cortó)."""
@@ -232,7 +257,7 @@ class Output:
             self.proc.kill()
 
     def _start(self, headers, ts):
-        self.error, self.need_key, self.q = '', False, queue.Queue()
+        self.error, self.need_key, self.q, self.pendiente = '', False, queue.Queue(), 0
         self.q.put(FLV_HEADER + b''.join(tag_bytes(key[0], ts, d) for key, d in headers.items()
                                          if self.vod_track or not extra_track(key[0], d)))
         # el video siempre primero: con el audio primero, Kick corta cada 18 s. Twitch lleva todos los audios (el VOD)
@@ -249,6 +274,7 @@ class Output:
             while (blob := q.get()) is not None:
                 proc.stdin.write(blob)
                 self.enviados += len(blob)
+                self.pendiente = max(0, self.pendiente - len(blob))  # el hilo del stream suma; acá aprox. alcanza
             proc.stdin.close()
             proc.wait(5)
         except (OSError, subprocess.TimeoutExpired):
@@ -366,6 +392,8 @@ class Bridge:
         self.last_wall = None
         self.ingest_proc = None
         self.recibidos = 0  # bytes que llegaron de OBS, para /metricas
+        self.entrada_kbps = 0  # lo que llegó de OBS en el último segundo
+        self.perdida = None  # % de paquetes TCP reenviados en toda la PC (None: sin datos)
         self.outputs = {}  # id del destino -> Output
         self.sync_outputs()
         # para el panel
@@ -396,6 +424,26 @@ class Bridge:
                 outs[i] = Output(self.ffmpeg, dest_url(d))
         self.outputs = outs  # se reemplaza entero: el hilo que envía itera sobre una copia
 
+    def medir(self, cada=1.0, tcp=tcp_segmentos):
+        """Cada segundo: kbps de entrada y de cada salida, y la pérdida de la red (promedio de los últimos 10 s)."""
+        antes_in, antes_out, ventana, entradas = self.recibidos, {}, deque(maxlen=10), deque(maxlen=10)
+        antes_tcp = tcp()
+        while True:
+            time.sleep(cada)
+            self.entrada_kbps = round((self.recibidos - antes_in) * 8 / 1000 / cada)
+            antes_in = self.recibidos
+            entradas.append(self.entrada_kbps)  # el límite va con el pico: un bache de OBS no hace tirar de más
+            for o in list(self.outputs.values()):
+                o.kbps = round((o.enviados - antes_out.get(id(o), o.enviados)) * 8 / 1000 / cada)
+                antes_out[id(o)] = o.enviados
+                o.limite = max(entradas) * 1000 // 8 * ATRASO_MAXIMO
+            ahora = tcp()
+            if ahora and antes_tcp:
+                ventana.append(((ahora[0] - antes_tcp[0]) % 2**32, (ahora[1] - antes_tcp[1]) % 2**32))  # los contadores dan la vuelta
+                salidos = sum(s for s, _ in ventana)
+                self.perdida = round(100 * sum(r for _, r in ventana) / salidos, 2) if salidos > 500 else None
+            antes_tcp = ahora
+
     def files(self):
         if not os.path.isdir(VIDEOS):
             return []
@@ -408,6 +456,12 @@ class Bridge:
                     self.durations[key] = probe_duration(self.ffmpeg, p)
                 out.append({'name': name, 'duration': self.durations[key]})
         return out
+
+    def medidas(self, o):
+        """Bitrate, segundos atrasados (lo que está en la cola, al ritmo que manda OBS) y saltos de una salida."""
+        ritmo = self.entrada_kbps * 1000 / 8
+        return {'kbps': o.kbps, 'atraso': round(o.pendiente / ritmo, 1) if ritmo and o.running() else 0,
+                'descartes': o.descartes, 'ultimo_descarte': o.ultimo_descarte}
 
     def status(self, full=True):
         with self.cv:
@@ -423,7 +477,9 @@ class Bridge:
         cfg = self.cfg
         s['destinations'] = [{'id': d['id'], 'name': d['name'], 'url': d['url'], 'enabled': d.get('enabled', True),
                               'state': o.state() if (o := self.outputs.get(d['id'])) else 'off',
-                              'error': o.error if o else ''} for d in cfg.get('destinations', [])]
+                              'error': o.error if o else '', **(self.medidas(o) if o else {})}
+                             for d in cfg.get('destinations', [])]
+        s['red'] = {'entrada_kbps': self.entrada_kbps, 'perdida': self.perdida}
         s['filler'] = {'mode': cfg.get('filler_mode', 'text'), 'file': os.path.basename(cfg.get('filler_file') or ''),
                        'loops': cfg.get('filler_loops', 1), 'text': cfg.get('filler_text', 'Activando delay'),
                        'seconds': cfg['delay_seconds']}
@@ -968,7 +1024,7 @@ def main():
     with open(CLAVE_NUCLEO + '.tmp', 'w', encoding='utf-8') as f:
         f.write(clave)
     os.replace(CLAVE_NUCLEO + '.tmp', CLAVE_NUCLEO)
-    for target in (bridge.ingest, bridge.run, lambda: api(bridge, cfg_path, clave, lambda: quit_app(SALIDA_ACTUALIZAR))):
+    for target in (bridge.ingest, bridge.run, bridge.medir, lambda: api(bridge, cfg_path, clave, lambda: quit_app(SALIDA_ACTUALIZAR))):
         threading.Thread(target=target, daemon=True).start()
     if sys.stdin:
         threading.Thread(target=console, daemon=True).start()

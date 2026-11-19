@@ -76,6 +76,28 @@ assert delay.extra_track(8, vod_frame) and not delay.extra_track(8, b'\xaf\x01\x
 assert delay.track_key(8, vod_cfg) != delay.track_key(8, b'\xaf\x00\x11\x90') == (8, 0, 0)
 assert delay.Output('ffmpeg', 'rtmp://live.twitch.tv/app/x').vod_track and not delay.Output('ffmpeg', 'rtmps://kick/app/x').vod_track
 
+# red lenta: la cola crece, a los 3000 se tira lo atrasado y se cuenta el salto
+o = delay.Output('ffmpeg', 'rtmps://kick/app/secreta')
+o.running, o.q = (lambda: True), __import__('queue').Queue()
+for _ in range(3001):
+    o.send(b'x' * 100, 'frame', {}, 0)
+assert o.pendiente == 300100 and not o.descartes
+o.send(b'x' * 100, 'frame', {}, 0)
+assert o.descartes == 1 and o.pendiente == 0 and o.q.empty() and o.need_key and o.ultimo_descarte
+o.pendiente = 125_000  # 1 s a 1000 kbps
+b.outputs, b.recibidos = {'k': o}, 0
+cuentas = iter([(1000, 0), (2000, 10), (3000, 20)])  # 1000 salidos y 10 reenviados por segundo: 1 %
+threading.Thread(target=b.medir, kwargs={'cada': 0.05, 'tcp': lambda: next(cuentas, (3000, 20))}, daemon=True).start()
+b.recibidos += 6250  # 1000 kbps en 0,05 s
+time.sleep(0.12)
+m = b.medidas(o)
+assert b.perdida == 1.0 and m['descartes'] == 1, (b.perdida, m)
+assert o.limite == 1_250_000, o.limite  # 10 s al pico de 1000 kbps
+o.pendiente = 1_300_000
+o.send(b'x' * 100, 'key', {}, 0)  # con la medida, se tira por segundos y no por cantidad de paquetes
+assert o.descartes == 2 and o.pendiente == 0
+assert delay.tcp_segmentos() is not None  # Windows lo da
+
 # dos destinos (archivos) a la vez: los dos tienen que salir completos y limpios
 for mode in ('text', 'rewind'):
     tmp = tempfile.mkdtemp()

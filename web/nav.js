@@ -51,11 +51,27 @@
     const bot = info.bot, chats = [bot.twitch, bot.kick];
     const v = bot.viewers || {}, viendo = Object.entries(v).filter(([, n]) => typeof n === 'number');
     const total = viendo.reduce((a, [, n]) => a + n, 0);
+    const red = s.red || {};  // un núcleo de antes no lo manda
+    const mbps = k => `${(k / 1000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} Mb/s`;
+    const destino = d => {
+      if (d.state !== 'live' || d.kbps === undefined) return item('dot ' + (d.state === 'error' ? 'err' : ''), d.name, d.error || '');
+      const hace = d.ultimo_descarte ? Math.round(Date.now() / 1000 - d.ultimo_descarte) : Infinity;
+      const salto = hace < 120, atrasado = d.atraso >= 2;
+      return item('dot ' + (salto ? 'err' : atrasado ? 'medio' : 'on'),
+        `${d.name} ${mbps(d.kbps)}` + (salto ? ' · saltó' : atrasado ? ` · ${d.atraso.toLocaleString('es-AR')} s atrás` : ''),
+        `Manda ${mbps(d.kbps)}. Atrasado ${d.atraso.toLocaleString('es-AR')} s (a los 10 s se tira lo atrasado y la imagen salta).` +
+        ` Saltos: ${d.descartes}` + (d.descartes ? `, el último hace ${hace < 120 ? hace + ' s' : Math.round(hace / 60) + ' min'}` : '') + '.');
+    };
+    const perdida = red.perdida;
     barra.replaceChildren(
       item('pill ' + (enVivo ? 'mal' : ''), enVivo ? 'En vivo' : 'Fuera del aire'),
       item('pill ' + s.mode, modo),
-      item('dot ' + (s.obs ? 'on' : ''), 'OBS'),
-      ...activas.map(d => item('dot ' + (d.state === 'live' ? 'on' : d.state === 'error' ? 'err' : ''), d.name, d.error || '')),
+      item('dot ' + (s.obs ? 'on' : ''), s.obs && red.entrada_kbps ? `OBS ${mbps(red.entrada_kbps)}` : 'OBS',
+        s.obs ? 'Lo que manda OBS a Stream Kit' : 'OBS no está transmitiendo'),
+      ...activas.map(destino),
+      ...(s.sending && perdida != null ? [item('dot ' + (perdida < 0.1 ? 'on' : perdida < 0.3 ? 'medio' : 'err'),
+        `Pérdida ${perdida.toLocaleString('es-AR')} %`,
+        'Paquetes que la PC tuvo que volver a mandar en los últimos 10 s. Con más de 0,3 % la subida no da abasto y las plataformas se atrasan.')] : []),
       item('dot ' + (!bot.vivo ? 'err' : chats.every(c => c === 'conectado') ? 'on' : 'medio'), 'Bot',
         bot.vivo ? `Twitch: ${bot.twitch || 'sin datos'} · Kick: ${bot.kick || 'sin datos'}` : 'El bot no está corriendo'),
       ...(viendo.length ? [item('viendo', `${total.toLocaleString('es-AR')} viendo`,
