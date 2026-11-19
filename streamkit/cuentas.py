@@ -24,7 +24,8 @@ ALCANCES_CANAL = 'channel:manage:broadcast'  # tu cuenta, no la del bot: un mode
 KICK_ALCANCES = 'user:read chat:write moderation:ban moderation:chat_message:manage'
 KICK_ALCANCES_CANAL = 'user:read channel:read channel:write'
 KICK_REDIRECCION = 'http://localhost:47614/callback'
-# tipo de login: plataforma, archivo de la sesión, campo de config con el nombre de la cuenta, permisos
+# tipo de login: plataforma, archivo de la sesión, campo de config donde queda el nombre de la cuenta, permisos.
+# El nombre no se escribe: sale de la cuenta con la que se entra al conectar
 CUENTAS = {
     'bot_twitch': ('twitch', 'token.json', 'bot', ALCANCES),
     'canal_twitch': ('twitch', 'token-canal.json', 'canal', ALCANCES_CANAL),
@@ -33,11 +34,7 @@ CUENTAS = {
 }
 CAMPOS = {  # lo que se escribe en la pantalla, con lo que acepta cada uno
     'client_id': (r'[a-z0-9]{0,64}', 'El Client ID de Twitch'),
-    'canal': (r'\w{0,25}', 'Tu canal de Twitch'),
-    'bot': (r'\w{0,25}', 'La cuenta de Twitch del bot'),
     'kick_client_id': (r'[A-Za-z0-9]{0,64}', 'El Client ID de Kick'),
-    'kick_canal_slug': (r'[\w-]{0,40}', 'Tu canal de Kick'),
-    'kick_bot': (r'[\w-]{0,40}', 'La cuenta de Kick del bot'),
 }
 logins = {}  # cómo va cada login, para que la pantalla lo muestre
 candado = threading.Lock()
@@ -82,8 +79,6 @@ def guardar(datos):
     nuevos = {}
     for campo, (patron, nombre) in CAMPOS.items():
         valor = str(datos.get(campo, '')).strip()
-        if campo != 'kick_client_id' and campo != 'client_id':
-            valor = valor.lower()
         if not re.fullmatch(patron, valor):
             raise ValueError(f'{nombre}: revisá lo que escribiste.')
         nuevos[campo] = valor
@@ -92,14 +87,12 @@ def guardar(datos):
         raise ValueError('La clave secreta de Kick: revisá lo que pegaste.')
     with candado:
         c = leer_config()
-        if nuevos['kick_canal_slug'] and (nuevos['kick_canal_slug'] != c.get('kick_canal_slug') or not c.get('kick_canal')):
-            nuevos.update(canal_kick(nuevos['kick_canal_slug']))
         if secreto:
             nuevos['kick_client_secret'] = secreto
-        # otra cuenta u otra app: la sesión vieja ya no corresponde y hay que conectar de nuevo
+        # otra app: las sesiones viejas ya no corresponden y hay que conectar de nuevo
         for tipo, (plataforma, archivo, campo, _) in CUENTAS.items():
             app = 'client_id' if plataforma == 'twitch' else 'kick_client_id'
-            if c.get(campo, '') != nuevos[campo] or c.get(app, '') != nuevos[app]:
+            if c.get(app, '') != nuevos[app]:
                 try:
                     os.remove(os.path.join(BOT, archivo))
                 except OSError:
@@ -115,28 +108,31 @@ def empezar(tipo):
         raise ValueError('Pedido inválido.')
     plataforma, archivo, campo, alcances = CUENTAS[tipo]
     c = leer_config()
-    cuenta = c.get(campo, '')
     app = c.get('client_id' if plataforma == 'twitch' else 'kick_client_id', '')
-    if not app or not cuenta:
-        raise ValueError('Primero completá y guardá las claves y los nombres de arriba.')
+    if not app:
+        raise ValueError('Primero completá y guardá el Client ID de arriba.')
     if plataforma == 'kick' and not c.get('kick_client_secret'):
         raise ValueError('Falta la clave secreta de Kick: pegala arriba y guardá.')
     hacer = twitch_login if plataforma == 'twitch' else kick_login
-    return dict(hacer(tipo, c, cuenta, alcances, archivo))
+    return dict(hacer(tipo, c, alcances, archivo))
 
 
-def terminar(tipo, sesion_nueva, archivo, como):
+def terminar(tipo, sesion_nueva, archivo, como, extra=None):
+    """Guarda la sesión y el nombre de la cuenta con la que se entró (y, en Kick, los números de su canal)."""
+    with candado:
+        c = leer_config()
+        c.update({CUENTAS[tipo][2]: como, **(extra or {})})
+        guardar_json(CONFIG, c)
     guardar_json(os.path.join(BOT, archivo), {**sesion_nueva, 'login': como})
     logins[tipo] = {'estado': 'listo', 'mensaje': f'Conectada como {como}'}
-    if tipo.startswith('bot_'):
-        panel_bot.reiniciar()  # el bot toma la sesión al arrancar
+    panel_bot.reiniciar()  # el bot toma la sesión y los nombres al arrancar
 
 
 def fallar(tipo, mensaje):
     logins[tipo] = {'estado': 'error', 'mensaje': mensaje}
 
 
-def twitch_login(tipo, c, cuenta, alcances, archivo):
+def twitch_login(tipo, c, alcances, archivo):
     """Login por código (device flow): la pantalla muestra el link, que ya trae el código."""
     try:
         d = pedir('https://id.twitch.tv/oauth2/device', urllib.parse.urlencode({'client_id': c['client_id'], 'scopes': alcances}).encode())
@@ -170,18 +166,28 @@ def twitch_login(tipo, c, cuenta, alcances, archivo):
             v = pedir('https://id.twitch.tv/oauth2/validate', cabeceras={'Authorization': 'OAuth ' + t['access_token']})
         except OSError as e:
             return fallar(tipo, f'No pude comprobar la cuenta: {e}')
-        if v['login'] != cuenta:  # si no, el bot hablaría con tu cuenta, o el título cambiaría otro canal
-            return fallar(tipo, f'Entraste como {v["login"]}, no como {cuenta}. Cerrá esa sesión en Twitch y probá de nuevo')
         terminar(tipo, {'access_token': t['access_token'], 'refresh_token': t['refresh_token'], 'user_id': v['user_id']}, archivo, v['login'])
 
     # se anota antes de arrancar a esperar: si la respuesta llega enseguida, no queda pisada por 'esperando'
     logins[tipo] = {'estado': 'esperando', 'codigo': d['user_code'], 'link': d['verification_uri'],
-                    'mensaje': f'Abrí el link con la sesión iniciada en {cuenta} y aceptá'}
+                    'mensaje': 'Abrí el link con la sesión iniciada en ' + ('tu cuenta' if tipo == 'canal_twitch' else 'la cuenta del bot') + ' y aceptá'}
     threading.Thread(target=esperar, daemon=True).start()
     return logins[tipo]
 
 
-def kick_login(tipo, c, cuenta, alcances, archivo):
+def canal_propio_kick(token, u):
+    """Tu canal de Kick: su nombre en kick.com/... (no siempre es el de la cuenta: _ pasa a -) y sus números."""
+    try:
+        slug = pedir('https://api.kick.com/public/v1/channels', cabeceras={'Authorization': 'Bearer ' + token})['data'][0]['slug']
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        slug = u['name'].lower().replace('_', '-')  # shortcut: el nombre que suele tener; abajo se comprueba que sea el suyo
+    datos = canal_kick(slug)
+    if datos['kick_broadcaster_id'] != u['user_id']:
+        raise ValueError(f'no encontré el canal de {u["name"]}')
+    return slug, datos
+
+
+def kick_login(tipo, c, alcances, archivo):
     """Login con vuelta a esta PC (localhost:47614): Kick no tiene login por código."""
     verificador, estado = secrets.token_urlsafe(48), secrets.token_urlsafe(16)
     reto = base64.urlsafe_b64encode(hashlib.sha256(verificador.encode()).digest()).rstrip(b'=').decode()
@@ -224,17 +230,17 @@ def kick_login(tipo, c, cuenta, alcances, archivo):
             if faltan:  # Kick da solo los permisos que tiene activados la app, sin avisar
                 return fallar(tipo, 'La app de Kick no tiene activados estos permisos: ' + ', '.join(sorted(faltan)))
             u = pedir('https://api.kick.com/public/v1/users', cabeceras={'Authorization': 'Bearer ' + t['access_token']})['data'][0]
+            como, extra = u['name'].lower(), None
+            if tipo == 'canal_kick':
+                como, extra = canal_propio_kick(t['access_token'], u)
         except urllib.error.HTTPError as e:
             return fallar(tipo, f'Kick rechazó el login ({e.code}). Revisá el Client ID y la clave secreta')
         except (OSError, ValueError, KeyError, IndexError) as e:
             return fallar(tipo, f'No pude terminar el login de Kick: {e}')
-        if tipo == 'canal_kick' and u['user_id'] != c.get('kick_broadcaster_id'):  # cambiaría el canal de otro
-            return fallar(tipo, f'Entraste como {u["name"]}, que no es el dueño de {cuenta}. Cerrá esa sesión en Kick y probá de nuevo')
-        if tipo == 'bot_kick' and u['name'].lower() != cuenta:  # si no, el bot hablaría con tu cuenta
-            return fallar(tipo, f'Entraste como {u["name"]}, no como {cuenta}. Cerrá esa sesión en Kick y probá de nuevo')
         terminar(tipo, {'access_token': t['access_token'], 'refresh_token': t['refresh_token'],
-                        'client_secret': c['kick_client_secret']}, archivo, u['name'].lower())
+                        'client_secret': c['kick_client_secret']}, archivo, como, extra)
 
-    logins[tipo] = {'estado': 'esperando', 'link': link, 'mensaje': f'Se abrió Kick en otra pestaña: aceptá con la sesión iniciada en {cuenta}'}
+    quien = 'tu cuenta' if tipo == 'canal_kick' else 'la cuenta del bot'
+    logins[tipo] = {'estado': 'esperando', 'link': link, 'mensaje': f'Se abrió Kick en otra pestaña: aceptá con la sesión iniciada en {quien}'}
     threading.Thread(target=esperar, daemon=True).start()
     return logins[tipo]

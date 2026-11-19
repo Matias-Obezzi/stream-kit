@@ -1,15 +1,13 @@
-// Delay: lo que ve la audiencia y lo que manda OBS, activar y sacar el delay, las plataformas (con su bitrate y la
-// prueba de subida) y qué se muestra mientras se junta el delay.
+// Delay: lo que ve la audiencia y lo que manda OBS, activar y sacar el delay, cómo está cada plataforma (su bitrate
+// y la prioridad se cambian en Configuración) y qué se muestra mientras se junta el delay.
 import { EyeIcon, EyeOffIcon, GaugeIcon, RadioIcon, SettingsIcon, TimerIcon, VideoOffIcon } from 'lucide-react'
 import * as React from 'react'
 import { Encabezado, Seccion } from '@/components/pagina'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberField } from '@/components/ui/number-field'
-import { Progress } from '@/components/ui/progress'
 import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -116,77 +114,24 @@ function Logo({ d }: { d: Destino }) {
     <span
       aria-hidden
       className="grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold"
-      style={{ color, background: `color-mix(in oklab, ${color} 16%, transparent)` }}
+      style={{
+        color,
+        background: `color-mix(in oklab, ${color} 16%, transparent)`,
+      }}
     >
       {d.name.trim()[0]?.toUpperCase()}
     </span>
   )
 }
 
-function Bitrate({ d, refrescar }: { d: Destino; refrescar: () => void }) {
-  const [propio, setPropio] = React.useState<number | null>(d.bitrate || 6000)
-  const usar = async (kbps: number) => {
-    try {
-      await post('/api/destinations/bitrate', { id: d.id, bitrate: kbps })
-      toast.success(kbps ? `${d.name}: ${numero(kbps)} kbps` : `${d.name}: lo mismo que manda OBS`)
-      refrescar()
-    } catch (e) {
-      toast.error((e as Error).message)
-    }
-  }
-  return (
-    <div className="flex flex-wrap items-end gap-2">
-      <div className="grid gap-1">
-        <Label htmlFor={`br-${d.id}`} className="text-xs font-normal text-muted-foreground">
-          Bitrate
-        </Label>
-        <Select value={d.bitrate ? 'propio' : 'obs'} onValueChange={(v) => usar(v === 'obs' ? 0 : propio || 6000)}>
-          <SelectTrigger id={`br-${d.id}`} className="h-8 w-44" aria-label={`Bitrate de ${d.name}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="obs">Igual que OBS</SelectItem>
-            <SelectItem value="propio">Propio (recomprime)</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {!!d.bitrate && (
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (propio) usar(propio)
-          }}
-        >
-          <div className="grid gap-1">
-            <Label htmlFor={`kbps-${d.id}`} className="text-xs font-normal text-muted-foreground">
-              kbps
-            </Label>
-            <NumberField
-              id={`kbps-${d.id}`}
-              className="h-8 w-36"
-              value={propio}
-              onValueChange={setPropio}
-              min={500}
-              max={20000}
-              step={500}
-              locale="es-AR"
-            />
-          </div>
-          <Button type="submit" size="sm" variant="secondary" disabled={!propio || propio === d.bitrate}>
-            Aplicar
-          </Button>
-        </form>
-      )}
-    </div>
-  )
-}
-
-function FilaDestino({ d, refrescar }: { d: Destino; refrescar: () => void }) {
+function FilaDestino({ d, principal, refrescar }: { d: Destino; principal: boolean; refrescar: () => void }) {
   const [estadoTxt, tono] = !d.enabled
     ? ['Desactivada', 'apagado']
     : d.state === 'live'
-      ? [`Transmitiendo${d.kbps !== undefined ? ` · ${mbps(d.kbps)}` : ''}`, 'ok']
+      ? [
+          `Transmitiendo${d.kbps !== undefined ? ` · ${mbps(d.kbps)}` : ''}${d.bajado ? ` · bajada a ${numero(d.bajado)} kbps por la principal` : ''}`,
+          'ok',
+        ]
       : d.state === 'error'
         ? [`Error: ${d.error}`, 'mal']
         : ['Esperando señal de OBS', 'apagado']
@@ -198,9 +143,15 @@ function FilaDestino({ d, refrescar }: { d: Destino; refrescar: () => void }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 font-semibold">
             {d.name}
+            {principal && (
+              <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-primary uppercase">Principal</span>
+            )}
             <span
               aria-hidden
-              className={cn('size-2 shrink-0 rounded-full', tono === 'ok' ? 'bg-exito' : tono === 'mal' ? 'bg-destructive' : 'bg-muted-foreground/40')}
+              className={cn(
+                'size-2 shrink-0 rounded-full',
+                tono === 'ok' ? 'bg-exito' : tono === 'mal' ? 'bg-destructive' : 'bg-muted-foreground/40',
+              )}
             />
           </div>
           <div className={cn('truncate text-xs', tono === 'mal' ? 'text-destructive' : 'text-muted-foreground')} title={d.url}>
@@ -222,8 +173,12 @@ function FilaDestino({ d, refrescar }: { d: Destino; refrescar: () => void }) {
           Bajale el bitrate a esta plataforma o a OBS.
         </p>
       )}
-      <div className="flex flex-wrap items-end justify-between gap-2 pl-12">
-        <Bitrate d={d} refrescar={refrescar} />
+      <div className="flex flex-wrap items-center justify-end gap-1 pl-12">
+        <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+          <Enlace href="/config#prioridades" aria-label={`Bitrate de ${d.name}`}>
+            <GaugeIcon /> {d.bajado ? `${numero(d.bajado)} kbps (bajada)` : d.bitrate ? `${numero(d.bitrate)} kbps` : 'Bitrate de OBS'}
+          </Enlace>
+        </Button>
         <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
           <Enlace href={`/config#${plataformaDe(d)}`} aria-label={`Clave de ${d.name}`}>
             <SettingsIcon /> Clave
@@ -231,75 +186,6 @@ function FilaDestino({ d, refrescar }: { d: Destino; refrescar: () => void }) {
         </Button>
       </div>
     </li>
-  )
-}
-
-function PruebaSubida({ s, refrescar }: { s: Estado; refrescar: () => void }) {
-  const p = s.prueba
-  const probando = p?.estado === 'probando'
-  const enStream = s.obs || s.sending
-  const empezar = async () => {
-    try {
-      await post('/api/red/prueba')
-      refrescar()
-    } catch (e) {
-      toast.error((e as Error).message)
-    }
-  }
-  return (
-    <div className="space-y-3 border-t pt-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <GaugeIcon aria-hidden className="size-4 text-primary" />
-        <span className="mr-auto text-sm font-medium">Prueba de subida</span>
-        <Button size="sm" variant="secondary" onClick={empezar} disabled={probando || enStream} title={enStream ? 'Se prueba sin stream' : undefined}>
-          {probando ? 'Probando…' : 'Probar la subida'}
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Manda 20 s a Twitch en su modo de prueba (no sale en vivo) y mide cuánto pasa por una conexión, como la de cada
-        plataforma. Hacela antes de empezar: con el stream andando no se puede.
-      </p>
-      {probando && (
-        <div className="space-y-1">
-          <Progress value={(p?.progreso ?? 0) * 100} aria-label="Avance de la prueba" />
-          <p className="text-xs text-muted-foreground" aria-live="polite">
-            Subiendo a {numero(p?.mbps ?? 0, 1)} Mb/s…
-          </p>
-        </div>
-      )}
-      {p?.estado === 'listo' && p.mbps !== undefined && (
-        <Alert variant={(p.recomendado ?? 0) >= 6000 ? 'success' : 'warning'}>
-          <AlertTitle>
-            Hasta Twitch pasan {p.tope ? 'más de ' : ''}
-            {numero(p.mbps, 1)} Mb/s {p.hora ? <span className="font-normal text-muted-foreground">({hace(p.hora)})</span> : null}
-          </AlertTitle>
-          <AlertDescription>
-            {p.tope ? (
-              <p>
-                Tu conexión no es el límite. Con {p.plataformas ?? 1} plataforma(s) activa(s), usá hasta{' '}
-                <b>{numero(p.recomendado ?? 0)} kbps</b> en OBS (Ajustes → Salida → Bitrate de video).
-              </p>
-            ) : (
-              <>
-                <p>
-                  Cada plataforma va por su propia conexión y ninguna va a pasar de eso: usá hasta{' '}
-                  <b>{numero(p.recomendado ?? 0)} kbps</b> en OBS (Ajustes → Salida → Bitrate de video).
-                </p>
-                <p>
-                  Un speedtest da más porque usa muchas conexiones a la vez a un servidor cercano. Si da mucho más que esto, en
-                  el camino a Twitch se pierden paquetes y cada conexión se frena: suele ser del proveedor y cambia según la hora.
-                </p>
-              </>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
-      {p?.estado === 'error' && (
-        <Alert variant="destructive">
-          <AlertDescription>{p.error}</AlertDescription>
-        </Alert>
-      )}
-    </div>
   )
 }
 
@@ -328,13 +214,22 @@ function Relleno({ s, refrescar }: { s: Estado; refrescar: () => void }) {
   }, [s.filler, tocado, preparando])
   React.useEffect(() => {
     if (s.busy) setMsg({ texto: s.busy, error: !preparando })
-    else setMsg((m) => (m?.texto.startsWith('Preparando') ? { texto: `Listo: delay de ${fmt(s.filler.seconds)}. Se usa la próxima vez que lo actives.` } : m))
+    else
+      setMsg((m) =>
+        m?.texto.startsWith('Preparando')
+          ? {
+              texto: `Listo: delay de ${fmt(s.filler.seconds)}. Se usa la próxima vez que lo actives.`,
+            }
+          : m,
+      )
   }, [s.busy, preparando, s.filler.seconds])
 
-  const cambiar = <T,>(f: (v: T) => void) => (v: T) => {
-    setTocado(true)
-    f(v)
-  }
+  const cambiar =
+    <T,>(f: (v: T) => void) =>
+    (v: T) => {
+      setTocado(true)
+      f(v)
+    }
   const f = s.files.find((x) => x.name === archivo)
   const video = modo === 'file' && !!f?.duration
   const estimado =
@@ -365,7 +260,13 @@ function Relleno({ s, refrescar }: { s: Estado; refrescar: () => void }) {
   }
   const guardar = async () => {
     try {
-      await post('/api/settings', { mode: modo, file: archivo, loops: vueltas, seconds: segs, text: texto })
+      await post('/api/settings', {
+        mode: modo,
+        file: archivo,
+        loops: vueltas,
+        seconds: segs,
+        text: texto,
+      })
       setTocado(false)
       setMsg({ texto: 'Preparando el video de delay...' })
       refrescar()
@@ -385,8 +286,8 @@ function Relleno({ s, refrescar }: { s: Estado; refrescar: () => void }) {
 
         {modo === 'rewind' && (
           <p className="text-sm text-muted-foreground">
-            Al activar el delay, tu audiencia vuelve a ver los últimos segundos y queda en diferido al instante, sin video de
-            relleno. La app guarda esos segundos en memoria (~60 MB por minuto a 8000 kbps).
+            Al activar el delay, tu audiencia vuelve a ver los últimos segundos y queda en diferido al instante, sin video de relleno. La app guarda
+            esos segundos en memoria (~60 MB por minuto a 8000 kbps).
           </p>
         )}
         {modo === 'file' && (
@@ -439,9 +340,7 @@ function Relleno({ s, refrescar }: { s: Estado; refrescar: () => void }) {
         )}
         <p className="text-sm">{estimado}</p>
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={guardar}>
-            Guardar
-          </Button>
+          <Button onClick={guardar}>Guardar</Button>
           {msg && (
             <p aria-live="polite" className={cn('text-sm', msg.error ? 'text-destructive' : 'text-muted-foreground')}>
               {msg.texto}
@@ -458,7 +357,10 @@ export default function Delay() {
   const [preview, setPreview] = React.useState(leerPreview)
   const [, forzar] = React.useState(0)
   React.useEffect(() => {
-    cargarScript('/plataformas.js').then(() => forzar((n) => n + 1), () => {})
+    cargarScript('/plataformas.js').then(
+      () => forzar((n) => n + 1),
+      () => {},
+    )
   }, [])
   const cambiarPreview = () => {
     const on = !preview
@@ -497,30 +399,37 @@ export default function Delay() {
           <>
             <ol className="list-decimal space-y-1.5 pl-5">
               <li>
-                Configurá OBS con el botón <b>Autoconfigurar OBS</b> de <Enlace href="/config" className="underline">Configuración</Enlace>. A
-                mano: Ajustes → Emisión → Servicio <b>Personalizado</b>, servidor <code>rtmp://127.0.0.1:1935/live</code>, clave{' '}
+                Configurá OBS con el botón <b>Autoconfigurar OBS</b> de{' '}
+                <Enlace href="/config" className="underline">
+                  Configuración
+                </Enlace>
+                . A mano: Ajustes → Emisión → Servicio <b>Personalizado</b>, servidor <code>rtmp://127.0.0.1:1935/live</code>, clave{' '}
                 <code>stream</code>, sin transmisión mejorada (multipista) y con H.264.
               </li>
               <li>
-                Poné tu clave de transmisión en <Enlace href="/config" className="underline">Configuración</Enlace>, en la pestaña de
-                cada plataforma (Twitch, Kick, YouTube, Facebook, TikTok, Instagram, X u otras). Abajo, en <b>Plataformas</b>, se ve
-                cómo está cada una. OBS manda una vez a esta app y la app transmite a todas.
+                Poné tu clave de transmisión en{' '}
+                <Enlace href="/config" className="underline">
+                  Configuración
+                </Enlace>
+                , en la pestaña de cada plataforma (Twitch, Kick, YouTube, Facebook, TikTok, Instagram, X u otras). Abajo, en <b>Plataformas</b>, se
+                ve cómo está cada una. OBS manda una vez a esta app y la app transmite a todas.
               </li>
               <li>
-                Transmitís desde OBS como siempre. Cuando quieras delay, tocá <b>Activar delay</b> (o <code>Ctrl+Shift+F9</code>):
-                mientras junta los segundos, sale el video o el texto que elijas abajo. <b>Volver a vivo</b> (<code>Ctrl+Shift+F10</code>) lo
-                saca.
+                Transmitís desde OBS como siempre. Cuando quieras delay, tocá <b>Activar delay</b> (o <code>Ctrl+Shift+F9</code>): mientras junta los
+                segundos, sale el video o el texto que elijas abajo. <b>Volver a vivo</b> (<code>Ctrl+Shift+F10</code>) lo saca.
               </li>
               <li>Poné en la config la misma resolución, FPS y bitrate que en OBS: el video de relleno se arma con esos valores.</li>
               <li>
-                Si tu subida no da para todas las plataformas al mismo bitrate, dale a alguna un <b>bitrate propio</b>: la app la
-                recomprime con la placa de video (o el procesador si no hay) y las demás siguen con lo que manda OBS. La{' '}
-                <b>prueba de subida</b> te dice cuánto usar.
+                Si tu subida no da para todas las plataformas al mismo bitrate, en{' '}
+                <Enlace href="/config#prioridades" className="underline">
+                  Configuración → Prioridades
+                </Enlace>{' '}
+                le das a alguna un <b>bitrate propio</b>, elegís una <b>plataforma principal</b> que la app cuida sola y probás la subida.
               </li>
             </ol>
             <p>
-              Si usás la pista de VOD de Twitch (audio sin música para el VOD), la app se la manda solo a Twitch. Mirá el README para
-              activarla en OBS.
+              Si usás la pista de VOD de Twitch (audio sin música para el VOD), la app se la manda solo a Twitch. Mirá el README para activarla en
+              OBS.
             </p>
           </>
         }
@@ -539,7 +448,10 @@ export default function Delay() {
               <Button
                 size="lg"
                 variant={puedeActivar ? 'default' : 'secondary'}
-                className={cn('h-14 text-base', puedeActivar && 'bg-aviso text-aviso-foreground shadow-[0_0_24px_-6px] shadow-aviso hover:bg-aviso/90')}
+                className={cn(
+                  'h-14 text-base',
+                  puedeActivar && 'bg-aviso text-aviso-foreground shadow-[0_0_24px_-6px] shadow-aviso hover:bg-aviso/90',
+                )}
                 disabled={!puedeActivar}
                 title={s && !s.obs ? 'Se activa cuando OBS está transmitiendo' : 'Ctrl+Shift+F9'}
                 onClick={() => accion('/api/delay')}
@@ -549,7 +461,10 @@ export default function Delay() {
               <Button
                 size="lg"
                 variant={puedeVolver ? 'default' : 'secondary'}
-                className={cn('h-14 text-base', puedeVolver && 'bg-exito text-exito-foreground shadow-[0_0_24px_-6px] shadow-exito hover:bg-exito/90')}
+                className={cn(
+                  'h-14 text-base',
+                  puedeVolver && 'bg-exito text-exito-foreground shadow-[0_0_24px_-6px] shadow-exito hover:bg-exito/90',
+                )}
                 disabled={!puedeVolver}
                 title="Ctrl+Shift+F10"
                 onClick={() => accion('/api/live')}
@@ -568,7 +483,7 @@ export default function Delay() {
                 {s.destinations.length ? (
                   <ul className="divide-y">
                     {s.destinations.map((d) => (
-                      <FilaDestino key={d.id} d={d} refrescar={refrescar} />
+                      <FilaDestino key={d.id} d={d} principal={d.id === s.prioridad?.principal} refrescar={refrescar} />
                     ))}
                   </ul>
                 ) : (
@@ -580,7 +495,6 @@ export default function Delay() {
                     , en la pestaña de cada plataforma.
                   </p>
                 )}
-                <PruebaSubida s={s} refrescar={refrescar} />
               </div>
             )}
           </Seccion>

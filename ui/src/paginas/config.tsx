@@ -1,5 +1,5 @@
-// Configuración: OBS, la botonera, las apps y cuentas de Twitch y Kick, y la clave de transmisión de cada plataforma.
-// Antes: web/config.html.
+// Configuración, en pestañas con su propia ayuda: Plataformas (apps, cuentas y la clave de transmisión de cada una),
+// Prioridades (bitrate, plataforma principal y prueba de subida), OBS y Stream Deck. Antes: web/config.html.
 import { ChevronRightIcon } from 'lucide-react'
 import * as React from 'react'
 import { Columnas, Encabezado, Seccion } from '@/components/pagina'
@@ -15,6 +15,7 @@ import { toast } from '@/components/ui/toast'
 import { abrirAfuera, cargarScript, esLocal, get, post, usePoll } from '@/lib/api'
 import { type Destino, useEstado } from '@/lib/estado'
 import { cn } from '@/lib/utils'
+import { Prioridades } from './prioridades'
 
 // globales de /plataformas.js (un script clásico): se leen recién después de cargarlo
 interface Plataforma {
@@ -50,7 +51,7 @@ interface Obs {
   dock_chat: boolean
 }
 
-const CAMPOS = ['client_id', 'canal', 'bot', 'kick_client_id', 'kick_canal_slug', 'kick_bot']
+const CAMPOS = ['client_id', 'kick_client_id'] // los nombres de las cuentas salen de cada conexión
 const CUENTAS: Record<string, [string, string, string]> = {
   canal_twitch: ['twitch', 'Tu cuenta', 'para cambiar título y categoría'],
   bot_twitch: ['twitch', 'El bot', 'para hablar, moderar y clipear'],
@@ -59,7 +60,12 @@ const CUENTAS: Record<string, [string, string, string]> = {
 }
 
 type Tono = 'on' | 'err' | 'medio' | ''
-const color: Record<Tono, string> = { on: 'bg-exito', err: 'bg-destructive', medio: 'bg-aviso', '': 'bg-muted-foreground/50' }
+const color: Record<Tono, string> = {
+  on: 'bg-exito',
+  err: 'bg-destructive',
+  medio: 'bg-aviso',
+  '': 'bg-muted-foreground/50',
+}
 
 function Punto({ tono, children, className }: { tono: Tono; children?: React.ReactNode; className?: string }) {
   return (
@@ -112,8 +118,7 @@ async function permisoParaCerrar(e: Obs) {
     e.transmitiendo
       ? {
           title: '¿Lo cierro igual, lo cambio y lo vuelvo a abrir?',
-          description:
-            'OBS está TRANSMITIENDO. Para cambiar su configuración hay que cerrarlo, y eso corta el stream en todas las plataformas.',
+          description: 'OBS está TRANSMITIENDO. Para cambiar su configuración hay que cerrarlo, y eso corta el stream en todas las plataformas.',
           confirmText: 'Cerrar OBS igual',
           variant: 'destructive',
         }
@@ -126,7 +131,11 @@ async function permisoParaCerrar(e: Obs) {
   return (
     si &&
     (!e.transmitiendo ||
-      confirm({ title: 'Última confirmación: se va a cortar el stream. ¿Cierro OBS?', confirmText: 'Cerrar OBS', variant: 'destructive' }))
+      confirm({
+        title: 'Última confirmación: se va a cortar el stream. ¿Cierro OBS?',
+        confirmText: 'Cerrar OBS',
+        variant: 'destructive',
+      }))
   )
 }
 
@@ -150,7 +159,9 @@ function SeccionObs() {
   async function agregarDock(cual: 'panel' | 'chat') {
     const e = await revisar()
     if (!e || !(await permisoParaCerrar(e))) return
-    setMsg({ texto: e.abierto ? 'Cerrando OBS… Si te pregunta si querés salir, decile que sí.' : 'Agregando…' })
+    setMsg({
+      texto: e.abierto ? 'Cerrando OBS… Si te pregunta si querés salir, decile que sí.' : 'Agregando…',
+    })
     try {
       const d = await post<{ ya_estaba?: boolean; reabierto?: boolean }>('/api/obs/dock', { cual, cerrar: e.abierto })
       setMsg({
@@ -168,7 +179,9 @@ function SeccionObs() {
     const e = await revisar()
     if (!e || !(await permisoParaCerrar(e))) return
     setOcupado(true)
-    setMsg({ texto: e.abierto ? 'Cerrando OBS… Si te pregunta si querés salir, decile que sí.' : 'Configurando…' })
+    setMsg({
+      texto: e.abierto ? 'Cerrando OBS… Si te pregunta si querés salir, decile que sí.' : 'Configurando…',
+    })
     try {
       const d = await post<{ reabierto?: boolean; importado?: string }>('/api/obs/configurar', { cerrar: e.abierto })
       setMsg({
@@ -218,8 +231,7 @@ function SeccionObs() {
           </Button>
         </div>
         <p className={hint}>
-          Los paneles quedan adentro de OBS, en Ver → Paneles: el de Stream Kit es esta web entera; el del chat, los dos chats juntos con
-          moderación.
+          Los paneles quedan adentro de OBS, en Ver → Paneles: el de Stream Kit es esta web entera; el del chat, los dos chats juntos con moderación.
         </p>
         <Estado msg={msg} />
       </div>
@@ -270,8 +282,8 @@ function SeccionBotonera() {
     <Seccion titulo="Botonera" acciones={estado}>
       <div className="grid gap-3">
         <p className={hint}>
-          Un botón para tu Stream Deck (Elgato) o StreamDock (Mirabox) que activa o saca el delay y muestra en la tecla cómo está: rojo sin
-          delay, verde con los segundos de delay.
+          Un botón para tu Stream Deck (Elgato) o StreamDock (Mirabox) que activa o saca el delay y muestra en la tecla cómo está: rojo sin delay,
+          verde con los segundos de delay.
         </p>
         <div>
           <Button disabled={!lista?.length || ocupado} onClick={instalar}>
@@ -279,8 +291,8 @@ function SeccionBotonera() {
           </Button>
         </div>
         <p className={hint}>
-          Se instala en las que encuentre en esta PC y se reinicia su programa para que lo cargue. Después, en la botonera, buscá la
-          categoría <b className="text-foreground">Stream Kit</b> y arrastrá <b className="text-foreground">Delay on/off</b> a una tecla.
+          Se instala en las que encuentre en esta PC y se reinicia su programa para que lo cargue. Después, en la botonera, buscá la categoría{' '}
+          <b className="text-foreground">Stream Kit</b> y arrastrá <b className="text-foreground">Delay on/off</b> a una tecla.
         </p>
         <Estado msg={msg} />
       </div>
@@ -290,7 +302,10 @@ function SeccionBotonera() {
 
 function Cuentas({ plataforma, datos, conectar }: { plataforma: string; datos?: ConfigResp; conectar: (tipo: string) => void }) {
   return (
-    <Seccion titulo="Cuentas conectadas">
+    <Seccion
+      titulo="Cuentas conectadas"
+      descripcion="Entrá con cada cuenta al conectarla: de ahí salen tu canal y el nombre del bot. El bot puede ser tu misma cuenta o una aparte."
+    >
       <ul className="divide-y">
         {datos &&
           Object.entries(CUENTAS)
@@ -298,18 +313,19 @@ function Cuentas({ plataforma, datos, conectar }: { plataforma: string; datos?: 
             .map(([tipo, [, nombre, para]]) => {
               const c = datos.cuentas[tipo] ?? {}
               const esperando = c.estado === 'esperando'
+              const app = !!datos.config[plataforma === 'twitch' ? 'client_id' : 'kick_client_id']
               return (
                 <li key={tipo} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 first:pt-0 last:pb-0">
                   <div className="min-w-0 flex-1 basis-48">
-                    <div className="font-medium break-words">{nombre + (c.cuenta ? ` (${c.cuenta})` : '')}</div>
+                    <div className="font-medium break-words">{nombre + (c.conectada && c.cuenta ? ` (${c.cuenta})` : '')}</div>
                     <div className={cn('text-sm break-words', c.estado === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
                       {esperando || c.estado === 'error'
                         ? c.mensaje
                         : c.conectada
                           ? `Conectada${c.como ? ' como ' + c.como : ''}, ${para}`
-                          : c.cuenta
+                          : app
                             ? `Sin conectar, ${para}`
-                            : 'Escribí la cuenta arriba y guardá'}
+                            : 'Guardá el Client ID de arriba para conectarla'}
                     </div>
                     {esperando && c.codigo && (
                       <div className="text-sm">
@@ -323,7 +339,7 @@ function Cuentas({ plataforma, datos, conectar }: { plataforma: string; datos?: 
                   <Punto tono={esperando ? 'medio' : c.conectada ? 'on' : 'err'}>
                     {esperando ? 'Esperando' : c.conectada ? 'Conectada' : 'Falta'}
                   </Punto>
-                  <Button variant={c.conectada ? 'outline' : 'default'} disabled={esperando || !c.cuenta} onClick={() => conectar(tipo)}>
+                  <Button variant={c.conectada ? 'outline' : 'default'} disabled={esperando || !app} onClick={() => conectar(tipo)}>
                     {c.conectada ? 'Conectar de nuevo' : 'Conectar'}
                   </Button>
                 </li>
@@ -351,7 +367,14 @@ function FilaDestino({ d, refrescar }: { d: Destino; refrescar: () => void }) {
   const fallo = (e: Error) => toast.error(e.message)
 
   async function quitar() {
-    if (!(await confirm({ title: `¿Quitar ${d.name}?`, description: 'Deja de transmitir ahí y se borra su clave.', confirmText: 'Quitar', variant: 'destructive' })))
+    if (
+      !(await confirm({
+        title: `¿Quitar ${d.name}?`,
+        description: 'Deja de transmitir ahí y se borra su clave.',
+        confirmText: 'Quitar',
+        variant: 'destructive',
+      }))
+    )
       return
     post('/api/destinations/delete', { id: d.id }).then(refrescar, fallo)
   }
@@ -448,7 +471,11 @@ function Agregar({ tab, p, refrescar }: { tab: string; p: Plataforma; refrescar:
 
   async function agregar() {
     try {
-      await post('/api/destinations/add', { name: otras ? nombre : p.nombre, url, key: clave })
+      await post('/api/destinations/add', {
+        name: otras ? nombre : p.nombre,
+        url,
+        key: clave,
+      })
     } catch (e) {
       return setError((e as Error).message)
     }
@@ -503,15 +530,96 @@ function Transmision({ tab }: { tab: string }) {
         )}
         {estado && !suyos.length && <Agregar tab={tab} p={p} refrescar={refrescar} />}
         {/* los pasos vienen escritos en HTML en /plataformas.js, nuestro */}
-        {p.pasos && <p className={cn(hint, '[&_a]:text-foreground [&_a]:underline [&_b]:text-foreground')} dangerouslySetInnerHTML={{ __html: p.pasos }} />}
+        {p.pasos && (
+          <p className={cn(hint, '[&_a]:text-foreground [&_a]:underline [&_b]:text-foreground')} dangerouslySetInnerHTML={{ __html: p.pasos }} />
+        )}
       </div>
     </Seccion>
   )
 }
 
+const SECCIONES: Record<string, string> = {
+  plataformas: 'Plataformas',
+  prioridades: 'Prioridades',
+  obs: 'OBS',
+  botonera: 'Stream Deck',
+}
+
+const AYUDA: Record<string, React.ReactNode> = {
+  plataformas: (
+    <>
+      <ol className="list-decimal space-y-1 pl-5 [&_code]:text-foreground">
+        <li>Cada plataforma tiene su pestaña. Usá solo las que te sirvan y dejá las otras vacías.</li>
+        <li>
+          En Twitch y en Kick: creá una app (la pestaña dice cómo, son gratis), pegá sus claves y tocá <b>Guardar</b>. Después conectá las cuentas con
+          los botones: tu canal y el nombre del bot salen de la cuenta con la que entrás en cada una.
+        </li>
+        <li>
+          En <b>Transmisión</b> de cada pestaña va tu clave de transmisión: OBS le manda el stream a esta app y la app a cada plataforma que tenga
+          clave. El interruptor <b>Activa</b> la pausa sin cortar las demás.
+        </li>
+        <li>
+          Si el bot usa una cuenta aparte, hacelo moderador en tu chat: <code>/mod</code> y el nombre del bot. Su cuenta se conecta con la sesión de
+          esa cuenta: conviene abrir el link en una ventana de incógnito.
+        </li>
+      </ol>
+      <p>
+        <b>¿Qué cuenta uso para el bot?</b> Podés poner tu propia cuenta, y el bot hace de mod y de bot con tu nombre: como sos el dueño del canal, no
+        hace falta darle moderador. O podés crear una cuenta nueva y usarla de bot: así sus mensajes se distinguen de los tuyos en el chat. Cualquiera
+        de las dos anda igual.
+      </p>
+      <p>Todo queda guardado en esta PC; las claves no se suben a ningún lado.</p>
+    </>
+  ),
+  prioridades: (
+    <>
+      <ol className="list-decimal space-y-1 pl-5">
+        <li>
+          <b>Bitrate de cada plataforma</b>: igual que OBS, o uno propio. Con uno propio, esa plataforma se recomprime con la placa de video (o el
+          procesador si no hay) y las demás siguen con lo que manda OBS. Cambiarlo en vivo reconecta a esa plataforma unos segundos.
+        </li>
+        <li>
+          <b>Plataforma principal</b>: la que tiene que andar siempre bien. Si se atrasa o salta, las demás bajan de a 30 % hasta el <b>piso</b>;
+          cuando la principal anda bien 3 minutos, suben de a poco. Si subir la hizo andar mal, la próxima vez espera el doble. Al terminar el stream
+          todas vuelven a lo que tienen configurado.
+        </li>
+        <li>
+          <b>Prueba de subida</b>: sin stream, mide cuánto pasa por una conexión hasta Twitch y te dice qué bitrate usar en OBS.
+        </li>
+      </ol>
+      <p>Si la principal se sigue atrasando con las demás en el piso, el límite es la conexión hasta esa plataforma: bajale el bitrate a OBS.</p>
+    </>
+  ),
+  obs: (
+    <ol className="list-decimal space-y-1 pl-5">
+      <li>
+        <b>Autoconfigurar OBS</b> lo deja transmitiendo a esta app, con la pista de VOD de Twitch lista. Para cambiar su configuración hay que cerrar
+        OBS: la app avisa antes, y dos veces si está transmitiendo.
+      </li>
+      <li>
+        Los paneles se agregan adentro de OBS (Ver → Paneles): el de Stream Kit es esta web entera; el del chat, los dos chats juntos con moderación.
+      </li>
+    </ol>
+  ),
+  botonera: (
+    <ol className="list-decimal space-y-1 pl-5">
+      <li>
+        Funciona con Stream Deck (Elgato) y StreamDock (Mirabox). Tocá <b>Instalar el botón</b> con el programa de la botonera instalado.
+      </li>
+      <li>
+        En la botonera, buscá la categoría <b>Stream Kit</b> y arrastrá <b>Delay on/off</b> a una tecla: rojo sin delay, verde con los segundos de
+        delay.
+      </li>
+    </ol>
+  ),
+}
+
 export default function Pagina() {
   const [listo, setListo] = React.useState<boolean | 'error'>(false)
-  const [pestana, setPestana] = React.useState(() => location.hash.slice(1) || 'twitch')
+  // el # elige la pestaña: #prioridades, #obs, #botonera o una plataforma (#kick, #youtube...)
+  const inicial = location.hash.slice(1)
+  const [seccion, setSeccion] = React.useState(() => (inicial in SECCIONES ? inicial : 'plataformas'))
+  const [pestana, setPestana] = React.useState(() => (inicial in SECCIONES ? '' : inicial) || 'twitch')
   const [datos, setDatos] = React.useState<ConfigResp>()
   const [campos, setCampos] = React.useState<Record<string, string>>({})
   const [secreto, setSecreto] = React.useState('')
@@ -570,7 +678,10 @@ export default function Pagina() {
     setGuardando(true)
     avisar('Guardando…')
     try {
-      await post('/api/config/guardar', { ...Object.fromEntries(CAMPOS.map((c) => [c, campos[c] ?? ''])), kick_client_secret: secreto })
+      await post('/api/config/guardar', {
+        ...Object.fromEntries(CAMPOS.map((c) => [c, campos[c] ?? ''])),
+        kick_client_secret: secreto,
+      })
     } catch (e) {
       setGuardando(false)
       return avisar((e as Error).message, true)
@@ -597,182 +708,154 @@ export default function Pagina() {
     setPestana(p)
     history.replaceState(null, '', '#' + p)
   }
+  const elegirSeccion = (v: string) => {
+    setSeccion(v)
+    history.replaceState(null, '', '#' + (v === 'plataformas' ? tab : v))
+  }
 
   return (
     <>
       <Confirmer />
-      <Encabezado
-        titulo="Configuración"
-        ayuda={
-          <>
-            <ol className="list-decimal space-y-1 pl-5 [&_code]:text-foreground">
-              <li>Cada plataforma tiene su pestaña. Usá solo las que te sirvan y dejá las otras vacías.</li>
-              <li>
-                En Twitch y en Kick: creá una app (la pestaña dice cómo, son gratis), pegá sus claves, escribí tu canal y la cuenta del bot,
-                y tocá <b>Guardar</b>. Después conectá las cuentas con los botones.
-              </li>
-              <li>
-                En <b>Transmisión</b> de cada pestaña va tu clave de transmisión: OBS le manda el stream a esta app y la app a cada
-                plataforma que tenga clave.
-              </li>
-              <li>
-                Si el bot usa una cuenta aparte, hacelo moderador en tu chat: <code>/mod</code> y el nombre del bot. Su cuenta se conecta con
-                la sesión de esa cuenta: conviene abrir el link en una ventana de incógnito.
-              </li>
-            </ol>
-            <p>
-              <b>¿Qué cuenta uso para el bot?</b> Podés poner tu propia cuenta, y el bot hace de mod y de bot con tu nombre: como sos el
-              dueño del canal, no hace falta darle moderador. O podés crear una cuenta nueva y usarla de bot: así sus mensajes se distinguen
-              de los tuyos en el chat. Cualquiera de las dos anda igual.
-            </p>
-            <p>Todo queda guardado en esta PC; las claves no se suben a ningún lado.</p>
-          </>
-        }
-      />
+      <Encabezado titulo="Configuración" ayuda={AYUDA[seccion]} />
 
-      <div className="grid gap-4">
-        <Columnas>
+      <Tabs value={seccion} onValueChange={elegirSeccion}>
+        <TabsList aria-label="Sección" className="mb-2">
+          {Object.entries(SECCIONES).map(([v, nombre]) => (
+            <TabsTrigger key={v} value={v} className="px-3">
+              {nombre}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="prioridades">
+          <Prioridades />
+        </TabsContent>
+        <TabsContent value="obs" className="max-w-3xl">
           <SeccionObs />
+        </TabsContent>
+        <TabsContent value="botonera" className="max-w-3xl">
           <SeccionBotonera />
-        </Columnas>
+        </TabsContent>
+        <TabsContent value="plataformas" className="grid gap-4">
+          {listo === 'error' ? (
+            <p className="text-sm text-destructive" role="status">
+              No cargó la lista de plataformas. Volvé a abrir la página.
+            </p>
+          ) : !listo ? (
+            <Spinner className="mx-auto" />
+          ) : (
+            <Tabs value={tab} onValueChange={elegir}>
+              <TabsList aria-label="Plataforma" className="h-auto w-full flex-wrap">
+                {tabs.map((t) => (
+                  <TabsTrigger key={t} value={t} className="min-w-20">
+                    {t === 'otras' ? 'Otras' : PLATAFORMAS[t].nombre}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
 
-        {listo === 'error' ? (
-          <p className="text-sm text-destructive" role="status">
-            No cargó la lista de plataformas. Volvé a abrir la página.
-          </p>
-        ) : !listo ? (
-          <Spinner className="mx-auto" />
-        ) : (
-          <Tabs value={tab} onValueChange={elegir}>
-            <TabsList aria-label="Plataforma" className="h-auto w-full flex-wrap">
-              {tabs.map((t) => (
-                <TabsTrigger key={t} value={t} className="min-w-20">
-                  {t === 'otras' ? 'Otras' : PLATAFORMAS[t].nombre}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-
-            <TabsContent value="twitch">
-              <Columnas>
-                <Seccion titulo="App y cuentas">
-                  <div className="grid gap-3">
+              <TabsContent value="twitch">
+                <Columnas>
+                  <Seccion titulo="App y cuentas">
                     <Campo id="client_id" label="Client ID de tu app">
                       <Input {...campo('client_id')} />
                     </Campo>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Campo id="canal" label="Tu canal">
-                        <Input {...campo('canal')} placeholder="El que va en twitch.tv/..." />
-                      </Campo>
-                      <Campo id="bot" label="Cuenta del bot">
-                        <Input {...campo('bot')} placeholder="Tu cuenta o una nueva para el bot" />
-                      </Campo>
-                    </div>
+                    <Pasos titulo="Cómo crear la app de Twitch">
+                      <li>
+                        Entrá a{' '}
+                        <a className={enlace} href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener">
+                          dev.twitch.tv/console/apps
+                        </a>{' '}
+                        con tu cuenta. Twitch pide tener activada la verificación en dos pasos.
+                      </li>
+                      <li>
+                        Tocá <b>Registrar tu aplicación</b>. Nombre: el que quieras. URL de redireccionamiento OAuth: <code>http://localhost</code>.
+                        Categoría: <b>Chat Bot</b>. Tipo de cliente: <b>Público</b>.
+                      </li>
+                      <li>
+                        Creala, entrá a <b>Administrar</b> y copiá el <b>ID de cliente</b> acá arriba.
+                      </li>
+                    </Pasos>
+                  </Seccion>
+                  <div className="grid min-w-0 content-start gap-4">
+                    <Cuentas plataforma="twitch" datos={datos} conectar={conectar} />
+                    <Transmision tab="twitch" />
                   </div>
-                  <Pasos titulo="Cómo crear la app de Twitch">
-                    <li>
-                      Entrá a{' '}
-                      <a className={enlace} href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener">
-                        dev.twitch.tv/console/apps
-                      </a>{' '}
-                      con tu cuenta. Twitch pide tener activada la verificación en dos pasos.
-                    </li>
-                    <li>
-                      Tocá <b>Registrar tu aplicación</b>. Nombre: el que quieras. URL de redireccionamiento OAuth: <code>http://localhost</code>.
-                      Categoría: <b>Chat Bot</b>. Tipo de cliente: <b>Público</b>.
-                    </li>
-                    <li>
-                      Creala, entrá a <b>Administrar</b> y copiá el <b>ID de cliente</b> acá arriba.
-                    </li>
-                  </Pasos>
-                </Seccion>
-                <div className="grid min-w-0 content-start gap-4">
-                  <Cuentas plataforma="twitch" datos={datos} conectar={conectar} />
-                  <Transmision tab="twitch" />
-                </div>
-              </Columnas>
-            </TabsContent>
-
-            <TabsContent value="kick">
-              <Columnas>
-                <Seccion titulo="App y cuentas">
-                  <div className="grid gap-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Campo id="kick_client_id" label="Client ID de tu app">
-                        <Input {...campo('kick_client_id')} />
-                      </Campo>
-                      <Campo id="kick_client_secret" label="Clave secreta (Client Secret)">
-                        <Input
-                          id="kick_client_secret"
-                          type="password"
-                          autoComplete="off"
-                          placeholder={secretoGuardado ? 'Guardada. Pegá otra para cambiarla' : ''}
-                          value={secreto}
-                          onChange={(e) => setSecreto(e.target.value)}
-                        />
-                      </Campo>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Campo id="kick_canal_slug" label="Tu canal">
-                        <Input {...campo('kick_canal_slug')} placeholder="El que va en kick.com/..." />
-                      </Campo>
-                      <Campo id="kick_bot" label="Cuenta del bot">
-                        <Input {...campo('kick_bot')} placeholder="Tu cuenta o una nueva para el bot" />
-                      </Campo>
-                    </div>
-                  </div>
-                  <Pasos titulo="Cómo crear la app de Kick">
-                    <li>
-                      En{' '}
-                      <a className={enlace} href="https://kick.com/settings/developer" target="_blank" rel="noopener">
-                        kick.com/settings/developer
-                      </a>
-                      , con tu cuenta, tocá <b>Crear app</b>. Kick pide tener activada la verificación en dos pasos.
-                    </li>
-                    <li>
-                      Nombre: el que quieras. URL de redirección: <code>http://localhost:47614/callback</code>.
-                    </li>
-                    <li>
-                      Activá estos permisos: leer la información del usuario, escribir en el chat, moderación (banear), moderación de mensajes del
-                      chat, leer la información del canal y escribir la información del canal.
-                    </li>
-                    <li>
-                      Copiá el <b>Client ID</b> y la <b>Client Secret</b> acá arriba. La clave secreta no se vuelve a mostrar: para cambiarla,
-                      pegá la nueva.
-                    </li>
-                  </Pasos>
-                </Seccion>
-                <div className="grid min-w-0 content-start gap-4">
-                  <Cuentas plataforma="kick" datos={datos} conectar={conectar} />
-                  <Transmision tab="kick" />
-                </div>
-              </Columnas>
-            </TabsContent>
-
-            {solo.map((t) => (
-              <TabsContent key={t} value={t} className="grid max-w-3xl gap-3">
-                <Transmision tab={t} />
-                <p className={hint}>
-                  {t === 'otras'
-                    ? 'Cualquier otra plataforma o servidor que acepte RTMP: ponele un nombre, la URL y la clave.'
-                    : `En ${PLATAFORMAS[t].nombre}, Stream Kit transmite con el mismo delay que en las demás. El bot, el chat y el título todavía son solo de Twitch y Kick.`}
-                </p>
+                </Columnas>
               </TabsContent>
-            ))}
-          </Tabs>
-        )}
 
-        {/* en las demás pestañas no hay nada que guardar: la clave se agrega con su botón */}
-        {listo === true && (tab === 'twitch' || tab === 'kick') && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3">
-            <p role="status" className={cn('min-w-0 flex-1 basis-48 text-sm', msg.error ? 'text-destructive' : 'text-muted-foreground')}>
-              {msg.texto}
-            </p>
-            <Button disabled={guardando} onClick={guardar}>
-              Guardar
-            </Button>
-          </div>
-        )}
-      </div>
+              <TabsContent value="kick">
+                <Columnas>
+                  <Seccion titulo="App y cuentas">
+                    <div className="grid gap-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Campo id="kick_client_id" label="Client ID de tu app">
+                          <Input {...campo('kick_client_id')} />
+                        </Campo>
+                        <Campo id="kick_client_secret" label="Clave secreta (Client Secret)">
+                          <Input
+                            id="kick_client_secret"
+                            type="password"
+                            autoComplete="off"
+                            placeholder={secretoGuardado ? 'Guardada. Pegá otra para cambiarla' : ''}
+                            value={secreto}
+                            onChange={(e) => setSecreto(e.target.value)}
+                          />
+                        </Campo>
+                      </div>
+                    </div>
+                    <Pasos titulo="Cómo crear la app de Kick">
+                      <li>
+                        En{' '}
+                        <a className={enlace} href="https://kick.com/settings/developer" target="_blank" rel="noopener">
+                          kick.com/settings/developer
+                        </a>
+                        , con tu cuenta, tocá <b>Crear app</b>. Kick pide tener activada la verificación en dos pasos.
+                      </li>
+                      <li>
+                        Nombre: el que quieras. URL de redirección: <code>http://localhost:47614/callback</code>.
+                      </li>
+                      <li>
+                        Activá estos permisos: leer la información del usuario, escribir en el chat, moderación (banear), moderación de mensajes del
+                        chat, leer la información del canal y escribir la información del canal.
+                      </li>
+                      <li>
+                        Copiá el <b>Client ID</b> y la <b>Client Secret</b> acá arriba. La clave secreta no se vuelve a mostrar: para cambiarla, pegá
+                        la nueva.
+                      </li>
+                    </Pasos>
+                  </Seccion>
+                  <div className="grid min-w-0 content-start gap-4">
+                    <Cuentas plataforma="kick" datos={datos} conectar={conectar} />
+                    <Transmision tab="kick" />
+                  </div>
+                </Columnas>
+              </TabsContent>
+
+              {solo.map((t) => (
+                <TabsContent key={t} value={t} className="grid max-w-3xl gap-3">
+                  <Transmision tab={t} />
+                  <p className={hint}>
+                    {t === 'otras'
+                      ? 'Cualquier otra plataforma o servidor que acepte RTMP: ponele un nombre, la URL y la clave.'
+                      : `En ${PLATAFORMAS[t].nombre}, Stream Kit transmite con el mismo delay que en las demás. El bot, el chat y el título todavía son solo de Twitch y Kick.`}
+                  </p>
+                </TabsContent>
+              ))}
+            </Tabs>
+          )}
+
+          {/* en las demás pestañas no hay nada que guardar: la clave se agrega con su botón */}
+          {listo === true && (tab === 'twitch' || tab === 'kick') && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3">
+              <p role="status" className={cn('min-w-0 flex-1 basis-48 text-sm', msg.error ? 'text-destructive' : 'text-muted-foreground')}>
+                {msg.texto}
+              </p>
+              <Button disabled={guardando} onClick={guardar}>
+                Guardar
+              </Button>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </>
   )
 }

@@ -16,6 +16,7 @@ export interface Destino {
   descartes?: number
   ultimo_descarte?: number
   recomprime?: boolean
+  bajado?: number // kbps a los que la bajó la prioridad para cuidar a la principal (0: lo suyo)
 }
 
 export interface Estado {
@@ -32,6 +33,7 @@ export interface Estado {
   phone?: string
   red?: { entrada_kbps: number; perdida: number | null }
   prueba?: PruebaSubida
+  prioridad?: { principal: string; piso: number }
 }
 
 export interface PruebaSubida {

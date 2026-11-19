@@ -21,21 +21,18 @@ def falla(codigo, cuerpo=b'{}'):
     import io
     return urllib.error.HTTPError('u', codigo, 'x', {}, io.BytesIO(cuerpo))
 
-BASE = {'client_id': 'abc123', 'canal': 'MiCanal', 'bot': 'MiBot', 'kick_client_id': '01ABC', 'kick_canal_slug': 'mi-canal', 'kick_bot': 'mibot'}
+BASE = {'client_id': 'abc123', 'kick_client_id': '01ABC'}
 
-# guardar: pasa los nombres a minúscula, busca los números del canal de Kick y nunca devuelve la clave secreta
-respuestas({'kick.com/api/v2/channels/mi-canal': {'id': 5, 'chatroom': {'id': 6}, 'user_id': 7}})
+# guardar: solo las claves de las apps (los nombres salen de cada conexión) y nunca devuelve la clave secreta
 c.guardar({**BASE, 'kick_client_secret': 'secreto12345'})
 cfg = c.leer_config()
-assert (cfg['canal'], cfg['bot'], cfg['kick_canal'], cfg['kick_chatroom'], cfg['kick_broadcaster_id']) == ('micanal', 'mibot', 5, 6, 7)
 assert cfg['client_id'] == 'abc123' and cfg['kick_client_secret'] == 'secreto12345' and reinicios
 leido = c.leer()
 assert leido['kick_secreto'] is True and 'secreto12345' not in json.dumps(leido)
-assert leido['config']['canal'] == 'micanal' and not leido['cuentas']['bot_twitch']['conectada']
-# sin clave nueva, queda la guardada; el canal de Kick no se vuelve a buscar si no cambió
-pedidos.clear()
+assert set(leido['config']) == {'client_id', 'kick_client_id'} and not leido['cuentas']['bot_twitch']['conectada']
+# sin clave nueva, queda la guardada
 c.guardar(BASE)
-assert c.leer_config()['kick_client_secret'] == 'secreto12345' and not pedidos
+assert c.leer_config()['kick_client_secret'] == 'secreto12345'
 
 # lo que no se acepta
 def rechaza(**k):
@@ -44,19 +41,17 @@ def rechaza(**k):
     except ValueError as e:
         return str(e)
     raise AssertionError(f'aceptó {k}')
-assert 'Twitch' in rechaza(canal='con espacio')
+assert 'Twitch' in rechaza(client_id='con espacio')
 assert 'clave secreta' in rechaza(kick_client_secret='a b')
-respuestas({'kick.com': falla(404)})
-assert 'No encontré el canal de Kick' in rechaza(kick_canal_slug='no-existe')
-assert c.leer_config()['kick_canal_slug'] == 'mi-canal', 'si algo falla, no guarda nada'
 
-# otra cuenta del bot: su sesión vieja se borra; la de tu canal queda
-for archivo in ('token.json', 'token-canal.json'):
+# otra app de Twitch: sus sesiones viejas se borran; las de Kick quedan
+for archivo in ('token.json', 'token-canal.json', 'token-kick.json'):
     json.dump({'access_token': 'a', 'refresh_token': 'r', 'login': 'x'}, open(os.path.join(c.BOT, archivo), 'w'))
-c.guardar({**BASE, 'bot': 'otrobot'})
-assert not os.path.exists(os.path.join(c.BOT, 'token.json')) and os.path.exists(os.path.join(c.BOT, 'token-canal.json'))
+c.guardar({**BASE, 'client_id': 'otra1'})
+assert not os.path.exists(os.path.join(c.BOT, 'token.json')) and not os.path.exists(os.path.join(c.BOT, 'token-canal.json'))
+assert os.path.exists(os.path.join(c.BOT, 'token-kick.json'))
 
-# login de Twitch: muestra el código, espera la autorización y comprueba que sea la cuenta pedida
+# login de Twitch: muestra el código, espera la autorización y el nombre sale de la cuenta con la que se entró
 def esperar_fin(tipo):
     fin = time.monotonic() + 5
     while c.logins[tipo].get('estado') == 'esperando' and time.monotonic() < fin:
@@ -76,13 +71,34 @@ assert r['codigo'] == 'ABCD' and r['link'].startswith('https://twitch.tv/activat
 assert esperar_fin('bot_twitch')['estado'] == 'listo'
 guardada = json.load(open(os.path.join(c.BOT, 'token.json')))
 assert guardada == {'access_token': 'at', 'refresh_token': 'rt', 'user_id': '99', 'login': 'otrobot'} and reinicios, 'el bot se reinicia para tomarla'
-assert c.leer()['cuentas']['bot_twitch']['como'] == 'otrobot'
-# con otra cuenta abierta en el navegador: no se guarda nada
-os.remove(os.path.join(c.BOT, 'token-canal.json'))
+assert c.leer_config()['bot'] == 'otrobot' and c.leer()['cuentas']['bot_twitch']['como'] == 'otrobot'
 intentos = iter([{'access_token': 'at', 'refresh_token': 'rt'}])
+respuestas({'oauth2/device': {'user_code': 'EFGH', 'verification_uri': 'https://twitch.tv/activate?y', 'device_code': 'd', 'interval': 0, 'expires_in': 30},
+            'oauth2/token': token, 'oauth2/validate': {'login': 'micanal', 'user_id': '7'}})
 c.empezar('canal_twitch')
-assert esperar_fin('canal_twitch')['estado'] == 'error' and 'no como micanal' in c.logins['canal_twitch']['mensaje']
-assert not os.path.exists(os.path.join(c.BOT, 'token-canal.json'))
+assert esperar_fin('canal_twitch')['estado'] == 'listo' and c.leer_config()['canal'] == 'micanal'
+
+# login de Kick de tu canal: el nombre del canal (con - en vez de _) y sus números salen de la cuenta
+import urllib.parse, urllib.request
+def kick(tipo, tabla):
+    respuestas({'oauth/token': {'access_token': 'kt', 'refresh_token': 'kr', 'scope': c.CUENTAS[tipo][3]}, **tabla})
+    q = urllib.parse.parse_qs(urllib.parse.urlsplit(c.empezar(tipo)['link']).query)
+    urllib.request.urlopen(f"http://127.0.0.1:47614/callback?state={q['state'][0]}&code=x", timeout=5).read()
+    return esperar_fin(tipo)
+canal = {'kick.com/api/v2/channels/mi-canal': {'id': 5, 'chatroom': {'id': 6}, 'user_id': 7}}
+fin = kick('canal_kick', {'public/v1/users': {'data': [{'name': 'Mi_Canal', 'user_id': 7}]},
+                          'public/v1/channels': {'data': [{'slug': 'mi-canal'}]}, **canal})
+cfg = c.leer_config()
+assert fin['estado'] == 'listo', fin
+assert (cfg['kick_canal_slug'], cfg['kick_canal'], cfg['kick_chatroom'], cfg['kick_broadcaster_id']) == ('mi-canal', 5, 6, 7)
+# si Kick no da el canal, se prueba con el nombre de la cuenta; si ese canal es de otro, no se guarda nada
+os.remove(os.path.join(c.BOT, 'token-canal-kick.json'))
+assert kick('canal_kick', {'public/v1/users': {'data': [{'name': 'Mi_Canal', 'user_id': 7}]}, 'public/v1/channels': falla(404), **canal})['estado'] == 'listo'
+os.remove(os.path.join(c.BOT, 'token-canal-kick.json'))
+fin = kick('canal_kick', {'public/v1/users': {'data': [{'name': 'Mi_Canal', 'user_id': 8}]}, 'public/v1/channels': falla(404), **canal})
+assert fin['estado'] == 'error' and not os.path.exists(os.path.join(c.BOT, 'token-canal-kick.json')), fin
+assert kick('bot_kick', {'public/v1/users': {'data': [{'name': 'ElBot', 'user_id': 9}]}})['estado'] == 'listo'
+assert c.leer_config()['kick_bot'] == 'elbot'
 
 # sin las claves guardadas, no arranca ningún login
 cfg = c.leer_config()

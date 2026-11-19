@@ -36,6 +36,8 @@ UPLOAD_EXT = IMAGE_EXT + ('.mp4', '.mov', '.mkv', '.webm', '.flv', '.avi')
 FLV_HEADER = b'FLV\x01\x05\x00\x00\x00\x09\x00\x00\x00\x00'
 RESYNC = (0, 0, b'', 'resync')
 ATRASO_MAXIMO = 10  # segundos que una plataforma puede quedar atrás por la red antes de tirar lo atrasado
+PISO = 2500  # kbps: lo menos que priorizar les deja a las otras plataformas si no se configuró otro piso
+ESPERA_SUBIR = 180  # segundos de la principal andando bien antes de devolverles bitrate a las demás
 NO_WINDOW = 0x08000000  # la app corre sin consola: sin esto cada ffmpeg abriría una ventana negra
 LOW = NO_WINDOW | 0x4000  # además prioridad baja, para no competir con OBS
 CFG_LOCK = threading.Lock()
@@ -225,8 +227,11 @@ def make_filler(cfg, ffmpeg):
 class Output:
     """Un destino (Twitch, YouTube, Kick...): su propio ffmpeg y su cola, así uno lento o caído no frena a los demás."""
 
-    def __init__(self, ffmpeg, url, bitrate=0):
+    def __init__(self, ffmpeg, url, bitrate=0, antes=None):
         self.ffmpeg, self.url = ffmpeg, url
+        # el que reemplaza (cambió el bitrate o la clave con el stream andando): hasta que ese no cierre no se conecta,
+        # porque la plataforma rechaza una segunda conexión con la misma clave
+        self.antes, self.cambio = antes, time.monotonic() if antes else 0.0
         self.bitrate = bitrate  # kbps propios: se recomprime el video (0: se manda tal cual llega de OBS)
         self.salida = 0  # bytes que salieron de verdad a la plataforma cuando se recomprime (los cuenta ffmpeg)
         if bitrate:  # saber qué codificador hay tarda: que no frene al hilo del stream cuando arranque
@@ -255,6 +260,10 @@ class Output:
         if not self.running():
             if k != 'key' or time.monotonic() < self.retry_at or (self.bitrate and self.ffmpeg not in _encoder):
                 return
+            if self.antes:
+                if self.antes.running():
+                    return
+                self.antes = None
             self._start(headers, ts)
         elif self.need_key:
             if k != 'key':
@@ -286,8 +295,12 @@ class Output:
             self.q.put(None)
 
     def close(self):
-        """Destino borrado o desactivado: no vuelve a arrancar."""
+        """Destino borrado, desactivado o reemplazado: no vuelve a arrancar."""
         self.closed = True
+        if self.q:  # lo atrasado ya no se va a ver: cerrar enseguida y bien, así la plataforma suelta la clave
+            with self.q.mutex:
+                self.q.queue.clear()
+        self.pendiente = 0
         self.stop()
 
     def kill(self):
@@ -342,6 +355,9 @@ class Output:
         self.retry_at = time.monotonic() + 5  # reintenta en 5 s (no martillar la plataforma si la clave está mal)
         if re.search(r'resolve|Connection to tcp|refused|timed out', text, re.I):
             self.error = 'No se pudo conectar con el servidor: revisá la URL y tu internet.'
+        elif 'Error opening output' in text and time.monotonic() - self.cambio < 90:
+            # recién reemplazado: la plataforma todavía tiene la conexión anterior (Twitch la guarda hasta ~30 s)
+            self.error = 'Esperando que la plataforma suelte la conexión anterior; reintentando.'
         elif 'Error opening output' in text:  # conectó pero la plataforma cortó al publicar
             self.error = 'La plataforma rechazó la conexión: revisá la clave de transmisión.'
         else:
@@ -449,6 +465,10 @@ class Bridge:
         self.saltos, self.saltos_vistos = deque(maxlen=300), {}  # (hora, id del destino) de cada vez que se tiró lo atrasado
         self.prueba = {'estado': ''}  # la prueba de subida
         self.outputs = {}  # id del destino -> Output
+        self.sync_lock = threading.Lock()  # lo llaman el panel y priorizar: dos a la vez armarían dos ffmpeg con la misma clave
+        # plataforma principal: kbps que priorizar les bajó a las demás (id -> kbps) y su estado
+        self.ajuste, self.mal, self.bien_desde, self.cambio, self.subida, self.espera = {}, 0, 0.0, -1e9, -1e9, ESPERA_SUBIR
+        self.descartes_principal, self.salto_en = 0, -1e9
         self.sync_outputs()
         # para el panel
         self.obs_connected = False
@@ -469,14 +489,66 @@ class Bridge:
     def sync_outputs(self):
         """Arranca o para destinos según la config; se puede llamar con el stream andando."""
         want = {d['id']: d for d in self.cfg.get('destinations', []) if d.get('enabled', True)}
-        outs = dict(self.outputs)
-        for i in list(outs):
-            if i not in want or outs[i].url != dest_url(want[i]) or outs[i].bitrate != want[i].get('bitrate', 0):
-                outs.pop(i).close()
-        for i, d in want.items():
-            if i not in outs:
-                outs[i] = Output(self.ffmpeg, dest_url(d), d.get('bitrate', 0))
-        self.outputs = outs  # se reemplaza entero: el hilo que envía itera sobre una copia
+        kbps = {i: self.ajuste.get(i) or d.get('bitrate', 0) for i, d in want.items()}  # lo bajado por priorizar manda
+        with self.sync_lock:
+            outs, viejos = dict(self.outputs), {}
+            for i in list(outs):
+                if i not in want or outs[i].url != dest_url(want[i]) or outs[i].bitrate != kbps[i]:
+                    viejos[i] = outs.pop(i)
+                    viejos[i].close()
+            for i, d in want.items():
+                if i not in outs:
+                    outs[i] = Output(self.ffmpeg, dest_url(d), kbps[i], viejos.get(i))
+            self.outputs = outs  # se reemplaza entero: el hilo que envía itera sobre una copia
+
+    def priorizar(self, ahora=None):
+        """Plataforma principal: si se atrasa o salta, les baja el bitrate a las demás (hasta el piso); si anda bien un rato,
+        se lo vuelve a subir de a poco. Cada cambio reconecta a esa plataforma (unos segundos), por eso va despacio."""
+        ahora = time.monotonic() if ahora is None else ahora
+        pid = self.cfg.get('principal') or ''
+        p = self.outputs.get(pid)
+        otras = {i: o for i, o in self.outputs.items() if i != pid and o.running()}
+        if not p or not p.running() or not otras:
+            self.mal, self.bien_desde = 0, 0.0
+            if self.ajuste and not any(o.running() for o in self.outputs.values()):  # terminó el stream: vuelve lo configurado
+                self.ajuste, self.espera = {}, ESPERA_SUBIR
+                self.sync_outputs()
+            return
+        salto = p.descartes > self.descartes_principal
+        self.descartes_principal = p.descartes
+        if salto:
+            self.salto_en = ahora  # cuenta aunque el último cambio sea reciente: se aplica apenas se pueda
+        atraso = p.pendiente / (max(1, self.entrada_kbps) * 125)
+        self.mal = self.mal + 1 if atraso > 2 or salto else 0
+        self.bien_desde = (self.bien_desde or ahora) if atraso < 0.5 and not salto else 0.0
+        piso = int(self.cfg.get('piso') or PISO)
+        config = {d['id']: d.get('bitrate', 0) or self.entrada_kbps for d in self.cfg.get('destinations', [])}
+        if (self.mal >= 3 or ahora - self.salto_en < 30) and ahora - self.cambio > 20:
+            cambios = {}
+            for i, o in otras.items():
+                actual = o.bitrate or self.entrada_kbps
+                nuevo = max(min(piso, config.get(i, actual)), int(actual * 0.7) // 250 * 250)
+                if nuevo < actual:
+                    cambios[i] = nuevo
+            self.cambio, self.mal, self.salto_en = ahora, 0, -1e9  # aunque ya estén en el piso: no reintentar cada segundo
+            if cambios:
+                if ahora - self.subida < 120:  # subirlo la hizo andar mal: la próxima subida espera el doble
+                    self.espera = min(1800, self.espera * 2)
+                self.ajuste.update(cambios)
+                nombres = {d['id']: d['name'] for d in self.cfg.get('destinations', [])}
+                print('La principal se atrasa: ' + ', '.join(f'{nombres.get(i, i)} a {k} kbps' for i, k in cambios.items()), flush=True)
+                self.sync_outputs()
+        elif self.ajuste and self.bien_desde and ahora - self.bien_desde > self.espera and ahora - self.cambio > self.espera:
+            for i, k in list(self.ajuste.items()):
+                techo = config.get(i, 0)
+                nuevo = int(k * 1.25) // 250 * 250
+                if not techo or nuevo >= techo:
+                    del self.ajuste[i]  # vuelve a lo configurado
+                else:
+                    self.ajuste[i] = nuevo
+            self.cambio = self.subida = ahora
+            print('La principal anda bien: se les sube el bitrate a las demás.', flush=True)
+            self.sync_outputs()
 
     def medir(self, cada=1.0, tcp=tcp_segmentos):
         """Cada segundo: kbps de entrada y de cada salida, y la pérdida de la red (promedio de los últimos 10 s)."""
@@ -500,6 +572,10 @@ class Bridge:
                 salidos = sum(s for s, _ in ventana)
                 self.perdida = round(100 * sum(r for _, r in ventana) / salidos, 2) if salidos > 500 else None
             antes_tcp = ahora
+            try:
+                self.priorizar()
+            except Exception as e:  # que un error acá no apague las medidas
+                print(f'priorizar: {e!r}', flush=True)
             salidas = list(self.outputs.items())
             for i, o in salidas:
                 if o.descartes > self.saltos_vistos.get(id(o), 0):
@@ -599,11 +675,12 @@ class Bridge:
             return s
         cfg = self.cfg
         s['destinations'] = [{'id': d['id'], 'name': d['name'], 'url': d['url'], 'enabled': d.get('enabled', True),
-                              'bitrate': d.get('bitrate', 0),
+                              'bitrate': d.get('bitrate', 0), 'bajado': self.ajuste.get(d['id'], 0),
                               'state': o.state() if (o := self.outputs.get(d['id'])) else 'off',
                               'error': o.error if o else '', **(self.medidas(o) if o else {})}
                              for d in cfg.get('destinations', [])]
         s['red'] = {'entrada_kbps': self.entrada_kbps, 'perdida': self.perdida}
+        s['prioridad'] = {'principal': cfg.get('principal') or '', 'piso': int(cfg.get('piso') or PISO)}
         s['prueba'] = self.prueba
         s['filler'] = {'mode': cfg.get('filler_mode', 'text'), 'file': os.path.basename(cfg.get('filler_file') or ''),
                        'loops': cfg.get('filler_loops', 1), 'text': cfg.get('filler_text', 'Activando delay'),
@@ -1046,6 +1123,19 @@ def api(bridge, cfg_path, clave, salir):
                 if re.search(r'\s', key) or len(key) > 300:
                     return self.error('La clave no puede tener espacios.')
                 dests.append({'id': secrets.token_hex(4), 'name': name, 'url': url, 'key': key, 'enabled': True})
+            elif action == 'prioridad':  # la plataforma principal ('' ninguna) y el piso de las demás
+                pid = str(s.get('principal') or '')
+                if pid and not any(d['id'] == pid for d in dests):
+                    return self.error('No encuentro esa plataforma.')
+                try:
+                    piso = int(s.get('piso') or PISO)
+                except (TypeError, ValueError):
+                    return self.error('El piso tiene que ser un número.')
+                if not 500 <= piso <= 20000:
+                    return self.error('El piso tiene que estar entre 500 y 20000 kbps.')
+                if pid != (bridge.cfg.get('principal') or ''):
+                    bridge.ajuste = {}  # otra principal: las demás vuelven a lo suyo y se empieza de cero
+                bridge.cfg['principal'], bridge.cfg['piso'] = pid, piso
             else:
                 d = next((d for d in dests if d['id'] == s.get('id')), None)
                 if not d:
@@ -1062,6 +1152,7 @@ def api(bridge, cfg_path, clave, salir):
                     if kbps and not 500 <= kbps <= 20000:
                         return self.error('El bitrate tiene que estar entre 500 y 20000 kbps (o 0: lo que manda OBS).')
                     d['bitrate'] = kbps
+                    bridge.ajuste.pop(d['id'], None)  # lo que elige a mano manda sobre lo que bajó priorizar
                 elif action == 'update':  # otra clave (o URL) sin quitarla: si estaba transmitiendo, se reconecta solo ese destino
                     url, key = str(s.get('url', d['url'])).strip(), str(s.get('key', '')).strip()
                     if not re.fullmatch(r'rtmps?://\S+', url):

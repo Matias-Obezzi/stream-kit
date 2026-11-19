@@ -107,6 +107,59 @@ assert delay.extra_track(8, vod_frame) and not delay.extra_track(8, b'\xaf\x01\x
 assert delay.track_key(8, vod_cfg) != delay.track_key(8, b'\xaf\x00\x11\x90') == (8, 0, 0)
 assert delay.Output('ffmpeg', 'rtmp://live.twitch.tv/app/x').vod_track and not delay.Output('ffmpeg', 'rtmps://kick/app/x').vod_track
 
+# cambiar el bitrate en vivo: el viejo tira lo atrasado y cierra, y el nuevo no se conecta hasta que el viejo terminó
+# (la plataforma rechaza dos conexiones con la misma clave)
+viejo = delay.Output('ffmpeg', 'rtmps://kick/app/x')
+viejo.q, viejo.pendiente, vivo = __import__('queue').Queue(), 500, [True]
+viejo.running = lambda: vivo[0]
+viejo.q.put(b'atrasado')
+viejo.close()
+assert viejo.q.get_nowait() is None and viejo.pendiente == 0
+nuevo, arranques = delay.Output('ffmpeg', 'rtmps://kick/app/x', 0, viejo), []
+nuevo._start = lambda h, ts: arranques.append(ts)
+nuevo.send(b'k', 'key', {}, 1)
+assert not arranques and nuevo.antes
+vivo[0] = False
+try:
+    nuevo.send(b'k', 'key', {}, 2)
+except AttributeError:  # el _start de mentira no arma la cola
+    pass
+assert arranques == [2] and not nuevo.antes
+
+# plataforma principal: si se atrasa, las demás bajan de a 30 % hasta el piso; si anda bien 3 min, suben de a 25 %
+from types import SimpleNamespace as NS
+pb, llamadas = delay.Bridge({'delay_seconds': 1}, 'ffmpeg', []), []
+pb.cfg.update(principal='p', piso=2500, destinations=[{'id': 'p', 'name': 'Twitch'}, {'id': 'k', 'name': 'Kick'},
+                                                      {'id': 'y', 'name': 'YouTube', 'bitrate': 3000}])
+pb.sync_outputs = lambda: llamadas.append(dict(pb.ajuste))
+p, k, y = (NS(running=lambda: True, bitrate=kb, pendiente=0, descartes=0) for kb in (0, 0, 3000))
+pb.outputs, pb.entrada_kbps = {'p': p, 'k': k, 'y': y}, 6000
+for t in range(10):
+    pb.priorizar(100 + t)
+assert not llamadas  # anda bien y no hay nada bajado: no se toca
+p.pendiente = 3 * 6000 * 125  # 3 s atrasada
+for t in range(3):
+    pb.priorizar(200 + t)
+assert llamadas == [{'k': 4000, 'y': 2500}], llamadas  # YouTube: 2100 sería menos que el piso
+k.bitrate, y.bitrate = 4000, 2500
+for t in range(3, 30):
+    pb.priorizar(200 + t)
+assert llamadas[-1] == {'k': 2750, 'y': 2500} and len(llamadas) == 2, llamadas  # 20 s entre cambios
+k.bitrate, p.pendiente = 2750, 0
+pb.priorizar(300)
+pb.priorizar(400)
+assert len(llamadas) == 2  # todavía no pasaron 3 min bien
+pb.priorizar(481)
+assert llamadas[-1] == {'k': 3250}, llamadas  # YouTube vuelve a sus 3000
+k.bitrate, p.descartes = 3250, 1  # saltó enseguida después de subir: se baja y la próxima subida espera el doble
+pb.priorizar(490)
+pb.priorizar(505)
+assert llamadas[-1] == {'k': 2500} and pb.espera == 360, (llamadas, pb.espera)
+p.running = lambda: False
+k.running = y.running = lambda: False
+pb.priorizar(600)
+assert llamadas[-1] == {} and pb.espera == 180  # terminó el stream: la próxima arranca con lo configurado
+
 # red lenta: la cola crece, a los 3000 se tira lo atrasado y se cuenta el salto
 o = delay.Output('ffmpeg', 'rtmps://kick/app/secreta')
 o.running, o.q = (lambda: True), __import__('queue').Queue()

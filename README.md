@@ -28,10 +28,14 @@ avisa con un cartel y un sonido.
 
 Si la subida no da para todas al mismo bitrate:
 
-- **Prueba de subida** (en Delay, sin stream): manda 20 s a Twitch en su modo de prueba, que no sale en vivo, mide
+- **Prueba de subida** (en Configuración → Prioridades, sin stream): manda 20 s a Twitch en su modo de prueba, que no sale en vivo, mide
   cuánto sube tu conexión ese día y te dice qué bitrate usar en OBS según cuántas plataformas tengas activas.
-- **Bitrate propio por plataforma** (en Delay): esa plataforma se recomprime con la placa de video (NVIDIA, Intel o
+- **Bitrate propio por plataforma** (en Configuración → Prioridades): esa plataforma se recomprime con la placa de video (NVIDIA, Intel o
   AMD; si no hay, con el procesador) y las demás siguen con lo que manda OBS. Por ejemplo, Twitch a 8000 y Kick a 5000.
+- **Plataforma principal** (en Configuración → Prioridades): si la principal se atrasa o salta, las demás bajan de a 30 % hasta un piso (2500
+  kbps si no elegís otro); cuando la principal anda bien 3 minutos, les devuelve el bitrate de a 25 %. Cada cambio
+  reconecta a esa plataforma unos segundos, por eso va despacio, y si subir la hizo andar mal, la próxima vez espera el
+  doble. Al terminar el stream todas vuelven a lo configurado.
 - **Consumo** guarda la red de los últimos 30 minutos con stream: bitrate de OBS y de cada plataforma, atraso,
   pérdida de paquetes y cada salto, para ver cuándo empezó un problema.
 
@@ -66,9 +70,10 @@ También podés descomprimir la versión nueva encima, con Stream Kit cerrado: t
 
 Todo desde el panel, sin terminal:
 
-1. **Configuración**: tiene una pestaña por plataforma. En Twitch y en Kick, creá una app (la pantalla explica cómo,
+1. **Configuración**: va en pestañas (Plataformas, Prioridades, OBS y Stream Deck), cada una con su ayuda en el **?**. En Plataformas hay una pestaña por plataforma. En Twitch y en Kick, creá una app (la pantalla explica cómo,
    son gratis) y pegá sus claves.
-   Después conectá las cuentas: la tuya, para cambiar el título, y la del bot, para que hable y modere. El bot puede
+   Después conectá las cuentas: la tuya, para cambiar el título, y la del bot, para que hable y modere. Tu canal y el
+   nombre del bot salen de la cuenta con la que entrás al conectar cada una: no hay que escribirlos. El bot puede
    usar tu propia cuenta, y hace de mod y de bot con tu nombre, o una cuenta nueva solo para él, así sus mensajes se
    distinguen de los tuyos. Si solo usás una plataforma, dejá la otra vacía.
 2. En la misma pantalla, cada plataforma (Twitch, Kick, YouTube, Facebook, TikTok, Instagram, X) tiene su pestaña con
