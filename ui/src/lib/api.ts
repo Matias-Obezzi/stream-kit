@@ -82,3 +82,22 @@ export function cargarScript(src: string): Promise<void> {
 }
 
 export const esLocal = ['127.0.0.1', 'localhost'].includes(location.hostname)
+
+/** Abre un link en el navegador de siempre de la PC (en un panel de OBS, target=_blank abre una ventanita de OBS).
+ *  Desde el celular abre ahí mismo, en otra pestaña. */
+export function abrirAfuera(url: string) {
+  if (!esLocal) return void window.open(url, '_blank', 'noopener')
+  post('/api/abrir', { url }).catch(() => window.open(url, '_blank', 'noopener'))
+}
+
+/** Los links a otra página (o con target=_blank) van al navegador de siempre: se instala una vez, para todas las páginas. */
+export function linksAfuera() {
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+    if (!a || !/^https?:/.test(a.href)) return
+    if (new URL(a.href).origin === location.origin && a.target !== '_blank') return
+    e.preventDefault()
+    abrirAfuera(a.href)
+  })
+}

@@ -35,7 +35,9 @@ Si la subida no da para todas al mismo bitrate:
 - **Consumo** guarda la red de los últimos 30 minutos con stream: bitrate de OBS y de cada plataforma, atraso,
   pérdida de paquetes y cada salto, para ver cuándo empezó un problema.
 
-El panel se ve en un panel angosto de OBS (menú abajo) y en pantalla grande (menú al costado, en columnas).
+El panel se ve en un panel angosto de OBS (menú abajo) y en pantalla grande (menú al costado, en columnas). Cada
+pantalla tiene su ayuda en el botón **?** al lado del título. Desde esta PC, los links a otras páginas (y el login de
+Twitch y Kick) se abren en tu navegador, no en una ventanita de OBS.
 
 ## Instalar
 

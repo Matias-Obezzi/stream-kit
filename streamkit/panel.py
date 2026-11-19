@@ -286,6 +286,15 @@ def panel():
                 s = json.loads(cuerpo)
             except ValueError:
                 return self.error('Pedido inválido.')
+            if path == '/api/abrir':
+                # links del panel en el navegador de siempre, no en una ventanita de OBS; solo desde esta PC y solo web
+                url = str(s.get('url', ''))
+                if not self.local():
+                    return self.reply(403)
+                if not re.fullmatch(r'https?://[^\s"<>]+', url):
+                    return self.error('Link inválido.')
+                webbrowser.open(url)
+                return self.reply(200, b'{}')
             if path == '/api/actualizar':
                 if not self.local():
                     return self.reply(403)

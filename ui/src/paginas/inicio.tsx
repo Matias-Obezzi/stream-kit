@@ -11,6 +11,7 @@ import { esLocal, post, usePoll } from '@/lib/api'
 import { type BotEstado, type Estado, useEstado } from '@/lib/estado'
 import { Enlace } from '@/lib/router'
 import { cn } from '@/lib/utils'
+import { PAGINAS } from '@/rutas'
 
 type Tono = 'on' | 'medio' | 'err' | ''
 type Linea = [Tono, string]
@@ -76,10 +77,16 @@ function Pill({ tono, children }: { tono: TonoPill; children: React.ReactNode })
 }
 
 function Servicio({ href, titulo, pill, items, ir }: { href: string; titulo: string; pill?: React.ReactNode; items: Linea[]; ir: string }) {
+  const Icono = PAGINAS.find((p) => p.ruta === href)?.icono
   return (
     <Enlace href={href} className="group rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-      <Card className="h-full gap-3 p-4 transition-colors group-hover:border-primary/60 group-hover:bg-accent/40">
-        <div className="flex flex-wrap items-center gap-2">
+      <Card className="h-full gap-3 p-4 shadow-none transition-colors group-hover:border-primary/60 group-hover:bg-accent/40">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {Icono && (
+            <span className="grid size-8 place-items-center rounded-lg bg-primary/15 text-primary">
+              <Icono aria-hidden className="size-4" />
+            </span>
+          )}
           <h2 className="mr-auto font-semibold">{titulo}</h2>
           {pill}
         </div>
@@ -287,8 +294,6 @@ export default function Pagina() {
         </Seccion>
       )}
 
-      <SeccionVersion />
-
       <section aria-label="Servicios" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Servicio href="/delay" titulo="Delay" pill={delayPill} items={delayLineas} ir="Abrir delay" />
         <Servicio href="/bot" titulo="Bot" pill={botPill} items={botLineas} ir="Personalizar el bot" />
@@ -328,6 +333,8 @@ export default function Pagina() {
           </div>
         </Seccion>
       )}
+
+      <SeccionVersion />
     </div>
   )
 }

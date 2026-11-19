@@ -12,7 +12,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toast'
-import { cargarScript, get, post, usePoll } from '@/lib/api'
+import { abrirAfuera, cargarScript, esLocal, get, post, usePoll } from '@/lib/api'
 import { type Destino, useEstado } from '@/lib/estado'
 import { cn } from '@/lib/utils'
 
@@ -551,8 +551,9 @@ export default function Pagina() {
   }, [datos, leer])
 
   async function conectar(tipo: string) {
-    // la pestaña se abre ya, con el click: si se abre después de esperar al servidor, el navegador la bloquea
-    const ventana = window.open('', '_blank')
+    // desde la PC, el login va al navegador de siempre (no a una ventanita de OBS). Desde otro lado, la pestaña se abre
+    // ya, con el click: si se abre después de esperar al servidor, el navegador la bloquea
+    const ventana = esLocal ? null : window.open('', '_blank')
     let d: { link: string }
     try {
       d = await post<{ link: string }>('/api/config/conectar', { tipo })
@@ -561,6 +562,7 @@ export default function Pagina() {
       return avisar((e as Error).message, true)
     }
     if (ventana) ventana.location = d.link
+    else abrirAfuera(d.link)
     leer()
   }
 

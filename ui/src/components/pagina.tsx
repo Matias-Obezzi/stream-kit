@@ -1,29 +1,32 @@
-// Piezas comunes de las páginas: el título con su ayuda plegada y las secciones.
-import { ChevronRightIcon } from 'lucide-react'
+// Piezas comunes de las páginas: el título con su ayuda a mano (un botón, no un bloque en cada pantalla) y las secciones.
+import { CircleHelpIcon } from 'lucide-react'
 import * as React from 'react'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
-/** Título de la página, acciones a la derecha y un "Cómo se usa" plegado (el tutorial de cada pantalla). */
+/** Título de la página, acciones a la derecha y un botón "Cómo se usa" que abre el tutorial de la pantalla. */
 export function Encabezado({ titulo, acciones, ayuda }: { titulo: React.ReactNode; acciones?: React.ReactNode; ayuda?: React.ReactNode }) {
   return (
-    <header className="mb-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-xl font-semibold tracking-tight md:text-2xl">{titulo}</h1>
-        {acciones}
-      </div>
+    <header className="mb-5 flex flex-wrap items-center gap-3">
+      <h1 className="text-xl font-bold tracking-tight md:text-2xl">{titulo}</h1>
       {ayuda && (
-        <Collapsible className="rounded-lg border bg-card text-sm">
-          <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-            <ChevronRightIcon aria-hidden className="size-4 transition-transform group-data-[state=open]:rotate-90" />
-            Cómo se usa
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-2 px-3 pb-3 text-muted-foreground [&_b]:text-foreground [&_strong]:text-foreground">
-            {ayuda}
-          </CollapsibleContent>
-        </Collapsible>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" aria-label="Cómo se usa" title="Cómo se usa">
+              <CircleHelpIcon />
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Cómo se usa: {titulo}</DialogTitle>
+            </DialogHeader>
+            <DialogBody className="space-y-2 text-sm text-muted-foreground [&_b]:text-foreground [&_strong]:text-foreground">{ayuda}</DialogBody>
+          </DialogContent>
+        </Dialog>
       )}
+      <div className="ml-auto flex flex-wrap items-center gap-2">{acciones}</div>
     </header>
   )
 }
@@ -43,11 +46,11 @@ export function Seccion({
   children: React.ReactNode
 }) {
   return (
-    <Card className={cn('gap-3 py-4', className)}>
+    <Card className={cn('gap-3 py-4 shadow-none', className)}>
       {(titulo || acciones) && (
         <CardHeader className="flex flex-wrap items-start gap-2 px-4">
           <div className="mr-auto space-y-1">
-            {titulo && <CardTitle className="text-base">{titulo}</CardTitle>}
+            {titulo && <CardTitle className="text-sm font-semibold tracking-wide uppercase">{titulo}</CardTitle>}
             {descripcion && <CardDescription>{descripcion}</CardDescription>}
           </div>
           {acciones}

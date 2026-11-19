@@ -1,10 +1,11 @@
 // Delay: lo que ve la audiencia y lo que manda OBS, activar y sacar el delay, las plataformas (con su bitrate y la
 // prueba de subida) y qué se muestra mientras se junta el delay.
-import { EyeIcon, EyeOffIcon, GaugeIcon, SettingsIcon, UploadIcon } from 'lucide-react'
+import { EyeIcon, EyeOffIcon, GaugeIcon, RadioIcon, SettingsIcon, TimerIcon, VideoOffIcon } from 'lucide-react'
 import * as React from 'react'
-import { Columnas, Encabezado, Seccion } from '@/components/pagina'
+import { Encabezado, Seccion } from '@/components/pagina'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberField } from '@/components/ui/number-field'
@@ -61,17 +62,18 @@ function Cuadro({ cual, titulo, sub, activo }: { cual: 'in' | 'out'; titulo: str
     }
   }, [cual, activo])
   return (
-    <figure className="min-w-0 space-y-1.5">
-      <figcaption className="text-sm font-medium">
-        {titulo} <span className="font-normal text-muted-foreground">{sub}</span>
+    <figure className="relative aspect-video min-w-0 overflow-hidden rounded-lg bg-black ring-1 ring-border">
+      {senal && src ? (
+        <img src={src} alt={titulo} className="absolute inset-0 size-full object-contain" />
+      ) : (
+        <span className="absolute inset-0 grid place-content-center justify-items-center gap-1.5 text-xs text-white/50">
+          <VideoOffIcon aria-hidden className="size-5" />
+          Sin señal
+        </span>
+      )}
+      <figcaption title={sub} className="absolute top-1.5 left-1.5 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold text-white backdrop-blur">
+        {titulo} <span className="font-normal text-white/60 max-xl:hidden">· {sub}</span>
       </figcaption>
-      <div className="relative aspect-video overflow-hidden rounded-lg border bg-muted">
-        {senal && src ? (
-          <img src={src} alt={titulo} className="absolute inset-0 size-full object-contain" />
-        ) : (
-          <span className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Sin señal</span>
-        )}
-      </div>
     </figure>
   )
 }
@@ -97,6 +99,30 @@ function plataformaDe(d: Destino): string {
   return f ? f(d) : ''
 }
 
+// el color de marca de cada plataforma: es un dato de la plataforma, no del tema
+const MARCA: Record<string, string> = {
+  twitch: '#9146ff',
+  kick: '#53fc18',
+  youtube: '#ff3b3b',
+  facebook: '#1877f2',
+  tiktok: '#ff0050',
+  instagram: '#e1306c',
+  x: '#a3a3a3',
+}
+
+function Logo({ d }: { d: Destino }) {
+  const color = MARCA[plataformaDe(d)] ?? 'var(--muted-foreground)'
+  return (
+    <span
+      aria-hidden
+      className="grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold"
+      style={{ color, background: `color-mix(in oklab, ${color} 16%, transparent)` }}
+    >
+      {d.name.trim()[0]?.toUpperCase()}
+    </span>
+  )
+}
+
 function Bitrate({ d, refrescar }: { d: Destino; refrescar: () => void }) {
   const [propio, setPropio] = React.useState<number | null>(d.bitrate || 6000)
   const usar = async (kbps: number) => {
@@ -111,11 +137,11 @@ function Bitrate({ d, refrescar }: { d: Destino; refrescar: () => void }) {
   return (
     <div className="flex flex-wrap items-end gap-2">
       <div className="grid gap-1">
-        <Label htmlFor={`br-${d.id}`} className="text-xs text-muted-foreground">
+        <Label htmlFor={`br-${d.id}`} className="text-xs font-normal text-muted-foreground">
           Bitrate
         </Label>
         <Select value={d.bitrate ? 'propio' : 'obs'} onValueChange={(v) => usar(v === 'obs' ? 0 : propio || 6000)}>
-          <SelectTrigger id={`br-${d.id}`} className="h-8 w-40" aria-label={`Bitrate de ${d.name}`}>
+          <SelectTrigger id={`br-${d.id}`} className="h-8 w-44" aria-label={`Bitrate de ${d.name}`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -133,7 +159,7 @@ function Bitrate({ d, refrescar }: { d: Destino; refrescar: () => void }) {
           }}
         >
           <div className="grid gap-1">
-            <Label htmlFor={`kbps-${d.id}`} className="text-xs text-muted-foreground">
+            <Label htmlFor={`kbps-${d.id}`} className="text-xs font-normal text-muted-foreground">
               kbps
             </Label>
             <NumberField
@@ -166,41 +192,44 @@ function FilaDestino({ d, refrescar }: { d: Destino; refrescar: () => void }) {
         : ['Esperando señal de OBS', 'apagado']
   const salto = !!d.ultimo_descarte && Date.now() / 1000 - d.ultimo_descarte < 120
   return (
-    <li className="space-y-3 rounded-lg border p-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span
-          aria-hidden
-          className={cn('size-2.5 shrink-0 rounded-full', tono === 'ok' ? 'bg-exito' : tono === 'mal' ? 'bg-destructive' : 'bg-muted-foreground/50')}
-        />
-        <div className="mr-auto min-w-0">
-          <div className="font-medium">{d.name}</div>
-          <div className={cn('truncate text-xs', tono === 'mal' ? 'text-destructive' : 'text-muted-foreground')}>
-            {estadoTxt} · {d.url}
+    <li className="space-y-3 py-3 first:pt-0 last:pb-0">
+      <div className="flex items-center gap-3">
+        <Logo d={d} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 font-semibold">
+            {d.name}
+            <span
+              aria-hidden
+              className={cn('size-2 shrink-0 rounded-full', tono === 'ok' ? 'bg-exito' : tono === 'mal' ? 'bg-destructive' : 'bg-muted-foreground/40')}
+            />
+          </div>
+          <div className={cn('truncate text-xs', tono === 'mal' ? 'text-destructive' : 'text-muted-foreground')} title={d.url}>
+            {estadoTxt}
           </div>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <Switch
-            checked={d.enabled}
-            aria-label={`Transmitir a ${d.name}`}
-            onCheckedChange={(on) => post('/api/destinations/enable', { id: d.id, enabled: on }).then(refrescar, (e: Error) => toast.error(e.message))}
-          />
-          Activa
-        </label>
-        <Button asChild variant="ghost" size="sm">
-          <Enlace href={`/config#${plataformaDe(d)}`} aria-label={`Configurar ${d.name}`}>
-            <SettingsIcon /> Configurar
-          </Enlace>
-        </Button>
+        <Switch
+          checked={d.enabled}
+          aria-label={`Transmitir a ${d.name}`}
+          title={d.enabled ? 'Activa: tocá para pausarla' : 'Pausada: tocá para activarla'}
+          onCheckedChange={(on) => post('/api/destinations/enable', { id: d.id, enabled: on }).then(refrescar, (e: Error) => toast.error(e.message))}
+        />
       </div>
       {d.state === 'live' && ((d.atraso ?? 0) >= 2 || salto) && (
-        <p className={cn('text-xs', salto ? 'text-destructive' : 'text-muted-foreground')}>
+        <p className={cn('rounded-md px-2 py-1.5 text-xs', salto ? 'bg-destructive/10 text-destructive' : 'bg-aviso/10 text-aviso')}>
           {salto
             ? `Saltó ${d.ultimo_descarte ? hace(d.ultimo_descarte) : ''}: la subida no da abasto.`
             : `${numero(d.atraso ?? 0, 1)} s atrasada: la subida no da abasto.`}{' '}
           Bajale el bitrate a esta plataforma o a OBS.
         </p>
       )}
-      <Bitrate d={d} refrescar={refrescar} />
+      <div className="flex flex-wrap items-end justify-between gap-2 pl-12">
+        <Bitrate d={d} refrescar={refrescar} />
+        <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+          <Enlace href={`/config#${plataformaDe(d)}`} aria-label={`Clave de ${d.name}`}>
+            <SettingsIcon /> Clave
+          </Enlace>
+        </Button>
+      </div>
     </li>
   )
 }
@@ -218,9 +247,9 @@ function PruebaSubida({ s, refrescar }: { s: Estado; refrescar: () => void }) {
     }
   }
   return (
-    <div className="space-y-3 rounded-lg border border-dashed p-3">
+    <div className="space-y-3 border-t pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <GaugeIcon aria-hidden className="size-4 text-muted-foreground" />
+        <GaugeIcon aria-hidden className="size-4 text-primary" />
         <span className="mr-auto text-sm font-medium">Prueba de subida</span>
         <Button size="sm" variant="secondary" onClick={empezar} disabled={probando || enStream} title={enStream ? 'Se prueba sin stream' : undefined}>
           {probando ? 'Probando…' : 'Probar la subida'}
@@ -397,7 +426,6 @@ function Relleno({ s, refrescar }: { s: Estado; refrescar: () => void }) {
         <p className="text-sm">{estimado}</p>
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={guardar}>
-            <UploadIcon className="hidden" aria-hidden />
             Guardar
           </Button>
           {msg && (
@@ -428,6 +456,8 @@ export default function Delay() {
     }
   }
   const accion = (ruta: string) => post(ruta).then(refrescar, (e: Error) => toast.error(e.message))
+  const puedeActivar = !!s && s.mode === 'live' && s.obs
+  const puedeVolver = !!s && s.mode !== 'live'
 
   return (
     <>
@@ -436,9 +466,16 @@ export default function Delay() {
         acciones={
           <>
             <Pastilla s={s} />
-            <Button variant="outline" size="sm" aria-pressed={preview} onClick={cambiarPreview}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-muted-foreground"
+              aria-pressed={preview}
+              aria-label={preview ? 'Apagar las vistas previas' : 'Prender las vistas previas'}
+              title={preview ? 'Apagar las vistas previas (ahorra CPU)' : 'Prender las vistas previas'}
+              onClick={cambiarPreview}
+            >
               {preview ? <EyeIcon /> : <EyeOffIcon />}
-              Preview: {preview ? 'encendido' : 'apagado'}
             </Button>
           </>
         }
@@ -476,40 +513,46 @@ export default function Delay() {
       />
 
       <div className="space-y-4">
-        <Columnas className="lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className="space-y-4">
+        <div className="grid items-start gap-4 *:min-w-0 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <Card className="gap-4 p-4 shadow-none">
             {preview && (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <Cuadro cual="out" titulo="En el stream" sub="lo que ve tu audiencia" activo={preview} />
-                <Cuadro cual="in" titulo="Ahora mismo" sub="lo que manda OBS" activo={preview} />
+                <Cuadro cual="in" titulo="OBS" sub="lo que manda ahora" activo={preview} />
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
               <Button
                 size="lg"
-                className="h-14 bg-aviso text-base text-aviso-foreground hover:bg-aviso/90"
-                disabled={!s || s.mode !== 'live' || !s.obs}
-                title={s && !s.obs ? 'Se activa cuando OBS está transmitiendo' : undefined}
+                variant={puedeActivar ? 'default' : 'secondary'}
+                className={cn('h-14 text-base', puedeActivar && 'bg-aviso text-aviso-foreground shadow-[0_0_24px_-6px] shadow-aviso hover:bg-aviso/90')}
+                disabled={!puedeActivar}
+                title={s && !s.obs ? 'Se activa cuando OBS está transmitiendo' : 'Ctrl+Shift+F9'}
                 onClick={() => accion('/api/delay')}
               >
-                Activar delay
+                <TimerIcon /> Activar delay
               </Button>
               <Button
                 size="lg"
-                className="h-14 bg-exito text-base text-exito-foreground hover:bg-exito/90"
-                disabled={!s || s.mode === 'live'}
+                variant={puedeVolver ? 'default' : 'secondary'}
+                className={cn('h-14 text-base', puedeVolver && 'bg-exito text-exito-foreground shadow-[0_0_24px_-6px] shadow-exito hover:bg-exito/90')}
+                disabled={!puedeVolver}
+                title="Ctrl+Shift+F10"
                 onClick={() => accion('/api/live')}
               >
-                Volver a vivo
+                <RadioIcon /> Volver a vivo
               </Button>
             </div>
-          </div>
+            {s && !s.obs && s.mode === 'live' && (
+              <p className="text-center text-xs text-muted-foreground">El delay se activa cuando OBS está transmitiendo a Stream Kit.</p>
+            )}
+          </Card>
 
-          <Seccion titulo="Plataformas" descripcion="El interruptor pausa una plataforma sin cortar las demás. Las claves se cambian en Configuración.">
+          <Seccion titulo="Plataformas" descripcion="El interruptor pausa una sin cortar las demás.">
             {s && (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {s.destinations.length ? (
-                  <ul className="space-y-3">
+                  <ul className="divide-y">
                     {s.destinations.map((d) => (
                       <FilaDestino key={d.id} d={d} refrescar={refrescar} />
                     ))}
@@ -527,7 +570,7 @@ export default function Delay() {
               </div>
             )}
           </Seccion>
-        </Columnas>
+        </div>
         {s && <Relleno s={s} refrescar={refrescar} />}
       </div>
     </>

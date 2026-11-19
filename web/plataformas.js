@@ -11,7 +11,7 @@ const PLATAFORMAS = {
   },
   youtube: {
     nombre: 'YouTube', servidor: 'rtmp://a.rtmp.youtube.com/live2', es: d => d.url.includes('youtube.com'),
-    pasos: 'En <a href="https://studio.youtube.com" target="_blank" rel="noopener">YouTube Studio → Emitir en vivo</a>, copiá la <b>clave de transmisión</b>. La primera vez, YouTube puede tardar un día en habilitar los directos.',
+    pasos: 'En <a href="https://studio.youtube.com" target="_blank" rel="noopener">YouTube Studio → Emitir en vivo</a>, copiá la <b>clave de transmisión</b>. Usá la <b>predeterminada</b> (o una que crees y guardes): es fija y no cambia entre directos. Si al crear un directo elegís <b>Crear una clave nueva</b>, YouTube da otra y hay que cambiarla acá. La primera vez, YouTube puede tardar un día en habilitar los directos.',
   },
   facebook: {
     nombre: 'Facebook', servidor: 'rtmps://live-api-s.facebook.com:443/rtmp/', es: d => d.url.includes('facebook.com'),
