@@ -66,9 +66,9 @@ def mismo_nucleo(a, b):
     return bool(na) and na == info(b).get('nucleo')
 
 
-def ultima():
-    """La última versión publicada en GitHub (pregunta como mucho cada 30 minutos)."""
-    if _ultima['datos'] is None or time.time() - _ultima['hora'] > 1800:
+def ultima(fresca=False):
+    """La última versión publicada en GitHub (pregunta como mucho cada 5 minutos, salvo fresca: al tocar Actualizar)."""
+    if fresca or _ultima['datos'] is None or time.time() - _ultima['hora'] > 300:  # GitHub deja 60 por hora sin cuenta
         pedido = urllib.request.Request(f'https://api.github.com/repos/{REPO}/releases/latest',
                                         headers={'User-Agent': 'StreamKit', 'Accept': 'application/vnd.github+json'})
         with urllib.request.urlopen(pedido, timeout=10) as r:
@@ -128,7 +128,7 @@ def instalar(actual):
         raise ValueError('Estás corriendo Stream Kit desde el código: actualizá con git pull.')
     if descarga['estado'] in ('Bajando…', 'Descomprimiendo…'):
         raise ValueError('Ya se está bajando.')
-    u = ultima()
+    u = ultima(fresca=True)
     if tupla(u['version']) <= tupla(actual) or not u['zip']:
         raise ValueError('Ya tenés la última versión.')
     descarga.update(estado='Bajando…', error='', version=u['version'])
