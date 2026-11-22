@@ -49,6 +49,7 @@ interface Evento {
   cantidad?: number
   accion?: string
   minutos?: number
+  por?: string // quién borró o baneó: un moderador, "el bot" o "Stream Kit"; vacío si la plataforma no lo dice
 }
 
 interface Linea {
@@ -98,7 +99,7 @@ const EVENTOS: Record<string, (e: Evento) => [string, string]> = {
   moderado: (e) => [
     ({ borrar: 'Mensaje borrado', timeout: 'Timeout', banear: 'Ban', desbanear: 'Desbaneado' } as Record<string, string>)[e.accion ?? ''] ||
       String(e.accion),
-    e.accion === 'timeout' ? e.minutos + ' min' : '',
+    [e.accion === 'timeout' ? e.minutos + ' min' : '', 'por ' + (e.por || 'un moderador')].filter(Boolean).join(' · '),
   ],
 }
 
@@ -209,7 +210,11 @@ export default function Pagina() {
   React.useEffect(() => {
     let vivo = true
     cargarScript('/emotes.js')
-      .then(() => emotes()?.cargar('').then(() => vivo && setVersion((v) => v + 1)))
+      .then(() =>
+        emotes()
+          ?.cargar('')
+          .then(() => vivo && setVersion((v) => v + 1)),
+      )
       .catch(() => {})
       .finally(() => vivo && setListo(true))
     return () => {
@@ -339,9 +344,7 @@ export default function Pagina() {
         <div key={clave} className="space-y-1">
           <h2 className="text-sm font-semibold">{!p.error && p.usuarios ? `${nombre} · ${p.total} en el chat` : nombre}</h2>
           <p className="[overflow-wrap:anywhere]">{p.error ? p.error : p.usuarios ? nombres(p.usuarios) : 'Kick no dice quién mira.'}</p>
-          <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-            Escribieron en este stream: {nombres(p.escribieron || [])}
-          </p>
+          <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">Escribieron en este stream: {nombres(p.escribieron || [])}</p>
         </div>,
       ]
     })
@@ -389,21 +392,25 @@ export default function Pagina() {
         ayuda={
           <ol className="list-decimal space-y-2 pl-5">
             <li>
-              Los chats de Twitch y Kick llegan juntos, con los follows, subs, raids y bits marcados. Los emotes se ven como imagen:
-              los de Twitch y Kick, y los de BTTV, FFZ y 7TV, los globales y los que sumes a tu canal.
+              Los chats de Twitch y Kick llegan juntos, con los follows, subs, raids y bits marcados. Los emotes se ven como imagen: los de Twitch y
+              Kick, y los de BTTV, FFZ y 7TV, los globales y los que sumes a tu canal.
             </li>
             <li>
-              En OBS: Ver → Paneles → Paneles de navegador personalizados, y agregá <code>http://127.0.0.1:8080/chat</code>. Queda como
-              un panel más.
+              En OBS: Ver → Paneles → Paneles de navegador personalizados, y agregá <code>http://127.0.0.1:8080/chat</code>. Queda como un panel más.
             </li>
             <li>
-              Tocá el contador de espectadores para ver quiénes están: en Twitch, los que están en el chat con su cuenta (los anónimos
-              no salen). Kick no lo dice; de las dos se ve quién escribió desde que arrancó el stream.
+              Tocá el contador de espectadores para ver quiénes están: en Twitch, los que están en el chat con su cuenta (los anónimos no salen). Kick
+              no lo dice; de las dos se ve quién escribió desde que arrancó el stream.
             </li>
             <li>La campanita suena con cada mensaje; abajo elegís cuándo sí y cuándo no.</li>
             <li>
-              Click derecho en un mensaje: copiarlo, silenciar a esa persona, borrarlo, timeout, ban y desban. Moderar lo hace el bot,
-              así que tiene que ser moderador.
+              Click derecho en un mensaje: copiarlo, silenciar a esa persona, borrarlo, timeout, ban y desban. Moderar lo hace el bot, así que tiene
+              que ser moderador.
+            </li>
+            <li>
+              Lo que se borra o se banea queda tachado, con quién fue: un moderador por su nombre, <b>el bot</b> (lo automático) o <b>Stream Kit</b>{' '}
+              (desde acá). En Twitch, para ver el nombre del moderador, el bot necesita el login de nuevo en Configuración. Kick no dice qué moderador
+              fue: sale "por un moderador".
             </li>
           </ol>
         }
@@ -516,9 +523,7 @@ export default function Pagina() {
                 </>
               ) : (
                 <>
-                  <span className={cn('mr-2 text-xs font-bold tracking-wider uppercase', moderado ? 'text-diferido' : 'text-primary')}>
-                    {titulo}
-                  </span>
+                  <span className={cn('mr-2 text-xs font-bold tracking-wider uppercase', moderado ? 'text-diferido' : 'text-primary')}>{titulo}</span>
                   <span className="mr-1.5 font-bold">{e.usuario}</span>
                   <span>
                     {detalle && e.mensaje ? detalle + ' · ' : detalle}
@@ -575,9 +580,7 @@ export default function Pagina() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Banear a {banear?.usuario}</AlertDialogTitle>
-            <AlertDialogDescription>
-              En {banear ? NOMBRES[banear.plataforma] : ''}. Lo hace el bot; se deshace con Desbanear.
-            </AlertDialogDescription>
+            <AlertDialogDescription>En {banear ? NOMBRES[banear.plataforma] : ''}. Lo hace el bot; se deshace con Desbanear.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>

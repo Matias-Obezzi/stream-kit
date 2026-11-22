@@ -18,6 +18,11 @@ KICK_CANAL = CONFIG.get("kick_canal_slug", "").lower()
 kick = {"activo": False, "estado": "sin conectar", "candado": threading.RLock()}  # el candado evita dos refrescos de sesión a la vez: el del timer y el del chat
 twitch = {"activo": False, "estado": "sin conectar"}
 follows = {"activo": False, "estado": "sin conectar"}  # los follows de Twitch no pasan por el chat: van por EventSub
+moderacion = {"activo": False, "estado": "sin conectar"}  # quién borra y banea en Twitch: también por EventSub (channel.moderate)
+# los permisos que pide channel.moderate: uno de cada grupo
+PERMISOS_MODERACION = [("moderator:read:" + p, "moderator:manage:" + p) for p in ("blocked_terms", "chat_settings", "unban_requests", "banned_users", "chat_messages", "warnings")] + \
+    [("moderator:read:moderators",), ("moderator:read:vips",)]
+vistas, candado_vistas = {}, threading.Lock()  # borrados y bans que ya salieron: el mismo puede avisarse por dos lados
 candado_twitch = threading.Lock()  # el refresh token es de un solo uso: el chat y los follows no pueden refrescar a la vez
 ESTADO = os.path.join(AQUI, "estado.json")  # lo lee el panel; "actualizado" viejo quiere decir que el bot no está corriendo
 EVENTOS = os.path.join(AQUI, "eventos.json")  # lo lee la web: lo último del chat y las alertas, para la vista de chat y alertas.html
@@ -92,6 +97,73 @@ def emitir(**evento):
         eventos["ultimo"] = evento["id"]
         eventos["lista"].append(evento)
         eventos["sucio"] = True
+
+
+def clave_moderacion(plataforma, accion, mid=None, uid=None):
+    grupo = {"timeout": "banear"}.get(accion, accion)
+    return plataforma, grupo, str(mid if accion == "borrar" else uid)
+
+
+def anotar(clave):
+    """True si es nuevo (y queda anotado por un minuto); False si ya salió."""
+    with candado_vistas:
+        ahora = time.monotonic()
+        for k in [k for k, t in vistas.items() if ahora - t > 60]:
+            del vistas[k]
+        if clave in vistas:
+            return False
+        vistas[clave] = ahora
+        return True
+
+
+def moderado(plataforma, accion, por="", usuario="", mid=None, uid=None, minutos=None, ya_anotado=False):
+    """Un mensaje borrado o alguien baneado, con quién lo hizo ("" si la plataforma no lo dice). Si lo hizo Stream Kit,
+    Twitch y Kick lo vuelven a avisar: sale una sola vez, con el aviso de acá."""
+    if not ya_anotado and not anotar(clave_moderacion(plataforma, accion, mid, uid)):
+        return
+    if not usuario and mid:  # Kick no dice de quién era el mensaje: se busca en el chat
+        with eventos["candado"]:
+            usuario = next((e.get("usuario", "") for e in reversed(eventos["lista"]) if e.get("mid") == mid), "")
+    emitir(tipo="moderado", plataforma=plataforma, accion=accion, usuario=usuario, uid=uid, mid=mid, minutos=minutos, por=por)
+
+
+def propia(plataforma, accion, por, usuario, mid=None, uid=None, minutos=None):
+    """Para lo que hace Stream Kit: se anota antes de pedirlo (el aviso de la plataforma puede llegar antes que la
+    respuesta) y devuelve con qué sacarlo si salió bien o soltarlo si falló."""
+    clave = clave_moderacion(plataforma, accion, mid, uid)
+    anotar(clave)
+    listo = lambda: moderado(plataforma, accion, por, usuario, mid, uid, minutos, ya_anotado=True)
+    soltar = lambda: vistas.pop(clave, None)
+    return listo, soltar
+
+
+def parsear_borrado(linea):
+    """Twitch, sin el permiso de saber quién: CLEARMSG (un mensaje) y CLEARCHAT (ban o timeout de alguien). Devuelve
+    lo que pasó o None. El chat entero borrado (CLEARCHAT sin nadie) no se marca."""
+    m = re.match(r"@(\S+) :tmi\.twitch\.tv (CLEARMSG|CLEARCHAT) #\w+ :(\S+)", linea)
+    if not m:
+        return None
+    t = dict(x.partition("=")[::2] for x in m[1].split(";"))
+    if m[2] == "CLEARMSG":
+        return {"accion": "borrar", "usuario": t.get("login") or "", "mid": t.get("target-msg-id")}
+    segundos = int(t.get("ban-duration") or 0)
+    return {"accion": "timeout" if segundos else "banear", "usuario": m[3], "uid": t.get("target-user-id"),
+            "minutos": max(1, round(segundos / 60)) if segundos else None}
+
+
+def parsear_moderacion(ev, ahora=None):
+    """channel.moderate de EventSub: el moderador y lo que hizo. None si no es borrar, banear o desbanear."""
+    accion, por = ev.get("action"), ev.get("moderator_user_name") or ev.get("moderator_user_login") or ""
+    d = ev.get(accion) if accion in ("delete", "ban", "timeout", "unban", "untimeout") else None
+    if not isinstance(d, dict):
+        return None
+    base = {"por": por, "usuario": d.get("user_name") or d.get("user_login") or "", "uid": d.get("user_id")}
+    if accion == "delete":
+        return {**base, "accion": "borrar", "mid": d.get("message_id")}
+    if accion == "timeout":
+        hasta = datetime.datetime.fromisoformat(d["expires_at"].replace("Z", "+00:00")).timestamp()
+        return {**base, "accion": "timeout", "minutos": max(1, round((hasta - (ahora or time.time())) / 60))}
+    return {**base, "accion": "banear" if accion == "ban" else "desbanear"}
 
 
 def publicar_eventos():
@@ -250,15 +322,19 @@ def crear_clip():
 
 def moderar(accion, m, ids):
     consulta = urllib.parse.urlencode({"broadcaster_id": ids[CANAL], "moderator_id": ids[BOT]})
+    listo, soltar = propia("twitch", accion, "el bot", m.get("nombre") or m["usuario"], m["id"] if accion == "borrar" else None, m["user_id"])
     try:
         if accion == "banear":
             helix("POST", "moderation/bans?" + consulta, {"data": {"user_id": m["user_id"], "reason": "Spam de viewbots (Stream Kit)"}})
         else:
             helix("DELETE", "moderation/chat?" + consulta + "&message_id=" + m["id"])
         log.info("%s a %s", accion, m["usuario"])
+        listo()
     except urllib.error.HTTPError as e:
+        soltar()
         log.error("no pude %s a %s: HTTP %s%s", accion, m["usuario"], e.code, " (falta /mod %s)" % BOT if e.code == 403 else "")
     except OSError as e:
+        soltar()
         log.error("no pude %s a %s: %s", accion, m["usuario"], e)
 
 
@@ -266,6 +342,7 @@ def ordenar(o):
     """Una acción de la vista de chat, ya revisada por la web. Devuelve "" si salió, o el error en palabras."""
     accion, plataforma = o["accion"], o["plataforma"]
     plataforma_nombre = plataforma.capitalize()
+    listo, soltar = propia(plataforma, accion, "Stream Kit", o.get("usuario", ""), o.get("mid"), o.get("uid"), o.get("minutos"))
     try:
         if plataforma == "twitch":
             if not ids_twitch:
@@ -289,6 +366,7 @@ def ordenar(o):
             else:
                 kick_api("POST", "moderation/bans", {**base, "reason": "Desde el chat de Stream Kit", **({"duration": o["minutos"]} if accion == "timeout" else {})})
     except urllib.error.HTTPError as e:
+        soltar()
         try:
             detalle = json.loads(e.read() or b"{}").get("message", "")
         except (ValueError, OSError, AttributeError):
@@ -299,10 +377,11 @@ def ordenar(o):
         log.error("no pude %s a %s en %s: HTTP %s %s", accion, o.get("usuario"), plataforma_nombre, e.code, detalle)
         return f"{plataforma_nombre} respondió {e.code}" + (f": {detalle}" if detalle else "")
     except (OSError, KeyError, ValueError) as e:
+        soltar()
         log.error("no pude %s a %s en %s: %s", accion, o.get("usuario"), plataforma_nombre, e)
         return f"No pude hablar con {plataforma_nombre}: {e}"
     log.info("%s a %s en %s, desde la vista de chat", accion, o.get("usuario"), plataforma_nombre)
-    emitir(tipo="moderado", plataforma=plataforma, accion=accion, usuario=o.get("usuario", ""), uid=o.get("uid"), mid=o.get("mid"), minutos=o.get("minutos"))
+    listo()
     return ""
 
 
@@ -390,12 +469,16 @@ def kick_hablar(texto):
 
 
 def kick_banear(m):
+    listo, soltar = propia("kick", "banear", "el bot", m.get("nombre") or m["usuario"], uid=m["user_id"])
     try:
         kick_api("POST", "moderation/bans", {"broadcaster_user_id": CONFIG["kick_broadcaster_id"], "user_id": m["user_id"], "reason": "Spam de viewbots (Stream Kit)"})
         log.info("banear a %s en Kick", m["usuario"])
+        listo()
     except urllib.error.HTTPError as e:
+        soltar()
         log.error("no pude banear a %s en Kick: HTTP %s%s", m["usuario"], e.code, " (falta /mod %s)" % KICK_BOT if e.code == 403 else "")
     except OSError as e:
+        soltar()
         log.error("no pude banear a %s en Kick: %s", m["usuario"], e)
 
 
@@ -451,6 +534,32 @@ def aviso_kick(evento):
     else:
         return None
     return a if a["usuario"] else None
+
+
+def moderacion_kick(evento):
+    """Mensajes borrados, bans y timeouts de Kick, como los manda Pusher. Kick esconde quién fue (dice "moderator"), salvo
+    su moderación automática. Devuelve lo que pasó o None."""
+    nombre = evento.get("event", "")
+    try:
+        d = json.loads(evento.get("data") or "{}")
+    except ValueError:
+        return None
+    if not isinstance(d, dict):
+        return None
+    quien = lambda x: "" if not isinstance(x, dict) or not x.get("id") else x.get("username") or ""  # id 0: el "moderator" anónimo
+    if nombre == "App\\Events\\MessageDeletedEvent":
+        mid = (d.get("message") or {}).get("id")
+        return {"accion": "borrar", "mid": mid, "por": "la moderación automática de Kick" if d.get("aiModerated") else ""} if mid else None
+    usuario = d.get("user") if isinstance(d.get("user"), dict) else {}
+    if not usuario.get("id"):
+        return None
+    base = {"usuario": usuario.get("username") or usuario.get("slug") or "", "uid": usuario["id"]}
+    if nombre == "App\\Events\\UserBannedEvent":
+        minutos = None if d.get("permanent") else int(d.get("duration") or 0) or None
+        return {**base, "accion": "timeout" if minutos else "banear", "minutos": minutos, "por": quien(d.get("banned_by"))}
+    if nombre == "App\\Events\\UserUnbannedEvent":
+        return {**base, "accion": "desbanear", "por": quien(d.get("unbanned_by"))}
+    return None
 
 
 def ws_conectar(host, ruta, extra=""):
@@ -523,9 +632,11 @@ def kick_sesion():
                         recientes.append(clave)
                         if a := aviso_kick(e):
                             emitir(plataforma="kick", **a)
+                        elif b := moderacion_kick(e):
+                            moderado("kick", **b)
                         elif clave[0] not in sin_usar:  # para saber qué más manda Kick, una vez por conexión
                             sin_usar.add(clave[0])
-                            log.info("evento de Kick sin usar: %s", clave[0])
+                            log.info("evento de Kick sin usar: %s %s", clave[0], str(clave[1] or "")[:300])  # con sus datos: para ver qué campos trae
             except TimeoutError:
                 pass
             if time.monotonic() - ultimo > 180:  # Pusher da señal cada 2 minutos
@@ -670,6 +781,8 @@ def sesion():
                                 moderar(d[0], m, ids)
                     elif a := parsear_aviso(linea):
                         emitir(plataforma="twitch", **a)
+                    elif not moderacion["activo"] and (b := parsear_borrado(linea)):  # con EventSub llega con el nombre de quién
+                        moderado("twitch", **b)
             except TimeoutError:
                 pass
             ahora = time.monotonic()
@@ -706,55 +819,81 @@ def revisar_lista(canal_id, ahora=None):
 
 
 def follows_sesion():
-    """Follows de Twitch por EventSub. Necesita moderator:read:followers: las sesiones de antes del 8/11/2026 no lo tienen."""
-    if "moderator:read:followers" not in alcances():
-        if follows["estado"] != "falta permiso":
-            log.warning("los follows de Twitch necesitan conectar de nuevo la cuenta del bot (Configuración): le falta un permiso")
-        follows["estado"] = "falta permiso"
+    """Follows y moderación de Twitch por EventSub. Los follows necesitan moderator:read:followers (las sesiones de antes
+    del 8/11/2026 no lo tienen) y saber quién borra o banea, los permisos de PERMISOS_MODERACION (antes del 22/11/2026)."""
+    tiene = alcances()
+    quiere_follows = "moderator:read:followers" in tiene
+    quiere_moderacion = all(any(p in tiene for p in grupo) for grupo in PERMISOS_MODERACION)
+    for nombre, estado, quiere in (("los follows", follows, quiere_follows), ("quién borra y banea", moderacion, quiere_moderacion)):
+        if not quiere:
+            if estado["estado"] != "falta permiso":
+                log.warning("para %s de Twitch, conectá de nuevo la cuenta del bot (Configuración): le falta un permiso", nombre)
+            estado["estado"] = "falta permiso"
+    if not quiere_follows and not quiere_moderacion:
         return  # reintentar vuelve a mirar cada 5 minutos: después del login arranca solo
     ids = {u["login"]: u["id"] for u in helix("GET", f"users?login={BOT}&login={CANAL}")["data"]}
     s, buf = ws_conectar(EVENTSUB, "/ws")
-    with s:
-        s.settimeout(5)
-        limite, ultimo, proxima_lista = 30, time.monotonic(), 0
-        while follows["activo"]:
-            if time.monotonic() >= proxima_lista:
-                proxima_lista = time.monotonic() + 60
-                try:
-                    revisar_lista(ids[CANAL])
-                except (OSError, KeyError, ValueError) as e:  # que falle la lista no corta EventSub
-                    log.warning("no pude leer la lista de seguidores: %s", e)
-            while c := ws_cuadro(buf):
-                tipo, cuerpo, buf = c
-                if tipo == 8:
-                    raise ConnectionError("EventSub cerró la conexión")
-                if tipo == 9:
-                    s.sendall(ws_codificar(cuerpo, 10))
-                if tipo != 1:
-                    continue
-                m = json.loads(cuerpo)
-                clase, p = m["metadata"]["message_type"], m.get("payload", {})
-                if clase == "session_welcome":  # hay 10 segundos para suscribirse
-                    limite = p["session"]["keepalive_timeout_seconds"] + 10
-                    helix("POST", "eventsub/subscriptions", {"type": "channel.follow", "version": "2",
-                                                             "condition": {"broadcaster_user_id": ids[CANAL], "moderator_user_id": ids[BOT]},
-                                                             "transport": {"method": "websocket", "session_id": p["session"]["id"]}})
+    try:
+        sesion_eventsub(s, buf, ids, quiere_follows, quiere_moderacion)
+    finally:
+        moderacion["activo"] = False  # sin EventSub, los borrados vuelven a salir por el chat, sin saber quién
+        s.close()
+
+
+def sesion_eventsub(s, buf, ids, quiere_follows, quiere_moderacion):
+    s.settimeout(5)
+    limite, ultimo, proxima_lista = 30, time.monotonic(), 0
+    while follows["activo"]:
+        if quiere_follows and time.monotonic() >= proxima_lista:
+            proxima_lista = time.monotonic() + 60
+            try:
+                revisar_lista(ids[CANAL])
+            except (OSError, KeyError, ValueError) as e:  # que falle la lista no corta EventSub
+                log.warning("no pude leer la lista de seguidores: %s", e)
+        while c := ws_cuadro(buf):
+            tipo, cuerpo, buf = c
+            if tipo == 8:
+                raise ConnectionError("EventSub cerró la conexión")
+            if tipo == 9:
+                s.sendall(ws_codificar(cuerpo, 10))
+            if tipo != 1:
+                continue
+            m = json.loads(cuerpo)
+            clase, p = m["metadata"]["message_type"], m.get("payload", {})
+            if clase == "session_welcome":  # hay 10 segundos para suscribirse
+                limite = p["session"]["keepalive_timeout_seconds"] + 10
+                suscribir = lambda tipo, version: helix("POST", "eventsub/subscriptions", {
+                    "type": tipo, "version": version, "condition": {"broadcaster_user_id": ids[CANAL], "moderator_user_id": ids[BOT]},
+                    "transport": {"method": "websocket", "session_id": p["session"]["id"]}})
+                if quiere_follows:
+                    suscribir("channel.follow", "2")
                     follows["estado"] = "conectado"
                     log.info("escuchando los follows de Twitch")
-                elif clase == "notification" and p["subscription"]["type"] == "channel.follow" and p["event"]["user_id"] not in seguidores:
-                    seguidores.add(p["event"]["user_id"])
-                    emitir(tipo="follow", plataforma="twitch", usuario=p["event"]["user_name"])
-                elif clase in ("session_reconnect", "revocation"):  # shortcut: reconecta de cero en vez de usar reconnect_url; se pueden perder unos segundos
-                    raise ConnectionError("EventSub pidió " + clase)
-            if time.monotonic() - ultimo > limite:
-                raise ConnectionError("sin señal de EventSub")
-            try:
-                datos = s.recv(65536)
-                if not datos:
-                    raise ConnectionError("EventSub cortó")
-                ultimo, buf = time.monotonic(), buf + datos
-            except TimeoutError:
-                pass
+                if quiere_moderacion:
+                    try:
+                        suscribir("channel.moderate", "2")
+                        moderacion.update(activo=True, estado="conectado")
+                        log.info("escuchando quién borra y banea en Twitch")
+                    except urllib.error.HTTPError as e:  # que no se lleve puestos a los follows
+                        moderacion["estado"] = "error"
+                        log.error("no pude escuchar quién borra y banea en Twitch: HTTP %s", e.code)
+            elif clase == "notification" and p["subscription"]["type"] == "channel.moderate":
+                if b := parsear_moderacion(p["event"]):
+                    moderado("twitch", **b)
+            elif clase == "notification" and p["subscription"]["type"] == "channel.follow" and p["event"]["user_id"] not in seguidores:
+                seguidores.add(p["event"]["user_id"])
+                emitir(tipo="follow", plataforma="twitch", usuario=p["event"]["user_name"])
+            elif clase in ("session_reconnect", "revocation"):  # shortcut: reconecta de cero en vez de usar reconnect_url; se pueden perder unos segundos
+                raise ConnectionError("EventSub pidió " + clase)
+        if time.monotonic() - ultimo > limite:
+            raise ConnectionError("sin señal de EventSub")
+        try:
+            datos = s.recv(65536)
+            if not datos:
+                raise ConnectionError("EventSub cortó")
+            ultimo, buf = time.monotonic(), buf + datos
+        except TimeoutError:
+            pass
 
 
 def reintentar(hacer, plataforma):
@@ -774,7 +913,8 @@ def reintentar(hacer, plataforma):
 
 def publicar_estado():
     try:
-        guardar_json(ESTADO, {"actualizado": time.time(), "twitch": twitch["estado"], "kick": kick["estado"], "follows": follows["estado"], "viewers": viewers, "inicio": inicio, "seguidores": seguidores_total,
+        guardar_json(ESTADO, {"actualizado": time.time(), "twitch": twitch["estado"], "kick": kick["estado"], "follows": follows["estado"],
+                              "moderacion": moderacion["estado"], "viewers": viewers, "inicio": inicio, "seguidores": seguidores_total,
                                 "ids": {"twitch": ids_twitch.get(CANAL), "kick": CONFIG.get("kick_broadcaster_id")}})  # para los emotes de BTTV, FFZ y 7TV
     except OSError:  # el panel justo lo está leyendo: sale en la próxima vuelta
         pass

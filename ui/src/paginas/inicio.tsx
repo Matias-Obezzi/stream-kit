@@ -22,7 +22,7 @@ interface Reinicios {
   ultimo_fallo?: string
 }
 interface Info {
-  bot: BotEstado & Reinicios & { follows?: string }
+  bot: BotEstado & Reinicios & { follows?: string; moderacion?: string }
   delay: Reinicios
   guardian: boolean
 }
@@ -47,6 +47,7 @@ const TEXTOS: Record<string, string> = {
   vencida: 'sesión vencida: hay que hacer el login',
   'sin conectar': 'sin conectar',
   'falta permiso': 'falta hacer el login de nuevo',
+  error: 'Twitch no lo dejó escuchar',
 }
 
 const PUNTO: Record<Tono, string> = { on: 'bg-exito', medio: 'bg-aviso', err: 'bg-destructive', '': 'bg-muted-foreground/50' }
@@ -116,7 +117,8 @@ function pasos(delay: Estado, config?: Config): Linea[] {
     if (!c.client_id && !c.kick_client_id) items.push(['err', 'Cargá las claves de tu app de Twitch o de Kick en Configuración.'])
     else if (!cuentas.some((x) => x.conectada)) items.push(['medio', 'Conectá tus cuentas en Configuración.'])
   }
-  if (!delay.destinations.length) items.push(['medio', 'Poné tu clave de transmisión en Configuración, en la pestaña de cada plataforma (Transmisión).'])
+  if (!delay.destinations.length)
+    items.push(['medio', 'Poné tu clave de transmisión en Configuración, en la pestaña de cada plataforma (Transmisión).'])
   if (!delay.obs && !delay.destinations.some((d) => d.state === 'live'))
     items.push(['', 'Configurá OBS para Stream Kit: en Configuración está el botón Autoconfigurar OBS.'])
   return items
@@ -212,17 +214,23 @@ export default function Pagina() {
   } else {
     if (delay) {
       const [tono, texto] = (
-        { live: ['bien', 'Sin delay'], filler: ['medio', `Activando · ${delay.filler_left} s`], delayed: ['medio', `En diferido · ${delay.delay} s`] } as const
+        {
+          live: ['bien', 'Sin delay'],
+          filler: ['medio', `Activando · ${delay.filler_left} s`],
+          delayed: ['medio', `En diferido · ${delay.delay} s`],
+        } as const
       )[delay.mode]
       delayPill = <Pill tono={tono}>{texto}</Pill>
       delayLineas = [
         [delay.obs ? 'on' : '', delay.obs ? 'OBS conectado' : 'Esperando a OBS'],
         ...delay.destinations
           .filter((d) => d.enabled)
-          .map((d): Linea => [
-            d.state === 'live' ? 'on' : d.state === 'error' ? 'err' : '',
-            `${d.name}: ${d.state === 'live' ? 'transmitiendo' : d.state === 'error' ? d.error : 'en espera'}`,
-          ]),
+          .map(
+            (d): Linea => [
+              d.state === 'live' ? 'on' : d.state === 'error' ? 'err' : '',
+              `${d.name}: ${d.state === 'live' ? 'transmitiendo' : d.state === 'error' ? d.error : 'en espera'}`,
+            ],
+          ),
         ...reinicios(info?.delay),
       ]
     }
@@ -247,6 +255,7 @@ export default function Pagina() {
           plataforma('Twitch', b.twitch),
           plataforma('Kick', b.kick),
           ...(b.follows ? [plataforma('Follows de Twitch', b.follows)] : []),
+          ...(b.moderacion ? [plataforma('Quién borra y banea en Twitch', b.moderacion)] : []),
           ...reinicios(b),
         ]
       }
@@ -260,12 +269,12 @@ export default function Pagina() {
         ayuda={
           <ol className="list-decimal space-y-2 pl-5">
             <li>
-              <b>Delay</b>: OBS transmite a esta app y la app a Twitch, Kick, YouTube o las que agregues. Con un botón le ponés delay al
-              stream, sin cortarlo.
+              <b>Delay</b>: OBS transmite a esta app y la app a Twitch, Kick, YouTube o las que agregues. Con un botón le ponés delay al stream, sin
+              cortarlo.
             </li>
             <li>
-              <b>Bot</b>: comandos, mensajes automáticos, ban a los bots de publicidad y <code className={codigo}>!clip</code>, en Twitch y
-              Kick a la vez.
+              <b>Bot</b>: comandos, mensajes automáticos, ban a los bots de publicidad y <code className={codigo}>!clip</code>, en Twitch y Kick a la
+              vez.
             </li>
             <li>
               <b>Chat</b>: los dos chats juntos, con campanita y moderación con click derecho. Sirve como panel de OBS.
@@ -274,8 +283,8 @@ export default function Pagina() {
               <b>Título y categoría</b>: los cambiás una vez y se cambian en las dos plataformas.
             </li>
             <li>
-              La app queda en la bandeja, al lado del reloj. <b>Salir</b> cierra todo. Para que arranque con Windows, poné un acceso directo
-              a <code className={codigo}>StreamKit.exe</code> en la carpeta de inicio (Win+R → <code className={codigo}>shell:startup</code>
+              La app queda en la bandeja, al lado del reloj. <b>Salir</b> cierra todo. Para que arranque con Windows, poné un acceso directo a{' '}
+              <code className={codigo}>StreamKit.exe</code> en la carpeta de inicio (Win+R → <code className={codigo}>shell:startup</code>
               ).
             </li>
           </ol>

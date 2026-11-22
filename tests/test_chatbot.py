@@ -270,6 +270,7 @@ class SocketFalso:
     def settimeout(self, s): pass
     def sendall(self, d): pass
     def recv(self, n): return b""  # después de lo que ya llegó, Twitch corta
+    def close(self): pass
 llamadas, reales_tw = [], (b.alcances, b.helix, b.ws_conectar)
 b.alcances = lambda: ["chat:read"]
 b.follows.update(activo=True, estado="conectando")
@@ -342,6 +343,75 @@ b.helix = lambda *a, **k: (_ for _ in ()).throw(ConnectionError("sin internet"))
 assert b.ordenar({"accion": "banear", "plataforma": "twitch", "uid": "42"}).startswith("No pude hablar con Twitch")
 assert len(b.eventos["lista"]) == antes + 7, "lo que falló no sale como hecho"
 b.helix, b.kick_api = reales_ord
+
+# quién borra o banea. Sin el permiso, Twitch lo avisa por el chat sin decir quién (CLEARMSG y CLEARCHAT)
+assert b.parsear_borrado("@login=ana;room-id=2;target-msg-id=m-1;tmi-sent-ts=1 :tmi.twitch.tv CLEARMSG #tucanal :hola gente") == {"accion": "borrar", "usuario": "ana", "mid": "m-1"}
+assert b.parsear_borrado("@ban-duration=600;room-id=2;target-user-id=42;tmi-sent-ts=1 :tmi.twitch.tv CLEARCHAT #tucanal :ana") == {"accion": "timeout", "usuario": "ana", "uid": "42", "minutos": 10}
+assert b.parsear_borrado("@room-id=2;target-user-id=42;tmi-sent-ts=1 :tmi.twitch.tv CLEARCHAT #tucanal :ana")["accion"] == "banear"
+assert b.parsear_borrado("@room-id=2;tmi-sent-ts=1 :tmi.twitch.tv CLEARCHAT #tucanal") is None, "el chat entero borrado no es de nadie"
+assert b.parsear_borrado(linea("hola")) is None
+# con el permiso, EventSub (channel.moderate) dice qué moderador fue
+mod = lambda accion, **d: {"action": accion, "moderator_user_name": "ModAna", "moderator_user_login": "modana", accion: d}
+assert b.parsear_moderacion(mod("delete", user_id="42", user_login="pepe", user_name="Pepe", message_id="m-2", message_body="x")) ==     {"por": "ModAna", "usuario": "Pepe", "uid": "42", "accion": "borrar", "mid": "m-2"}
+fin = b.datetime.datetime(2026, 11, 22, 6, 10, tzinfo=b.datetime.timezone.utc)
+assert b.parsear_moderacion(mod("timeout", user_id="42", user_name="Pepe", expires_at=fin.isoformat().replace("+00:00", "Z")), fin.timestamp() - 300)["minutos"] == 5
+assert b.parsear_moderacion(mod("ban", user_id="42", user_name="Pepe", reason=None))["accion"] == "banear"
+assert b.parsear_moderacion(mod("untimeout", user_id="42", user_name="Pepe"))["accion"] == "desbanear"
+assert b.parsear_moderacion(mod("slow", wait_time_seconds=10)) is None and b.parsear_moderacion({"action": "clear"}) is None
+# lo mismo avisado por dos lados sale una vez: lo que hace Stream Kit gana (la plataforma lo vuelve a avisar con la cuenta del bot)
+b.vistas.clear()
+antes = len(b.eventos["lista"])
+b.helix = lambda metodo, ruta, cuerpo=None: {"data": [{"login": "tubot", "id": "1"}, {"login": "tucanal", "id": "2"}]}
+assert b.ordenar({"accion": "borrar", "plataforma": "twitch", "mid": "m-3", "usuario": "Pepe"}) == ""
+b.moderado("twitch", accion="borrar", por="tubot", usuario="Pepe", mid="m-3")
+b.moderado("twitch", accion="borrar", usuario="pepe", mid="m-3")
+b.moderado("twitch", **b.parsear_moderacion(mod("delete", user_id="42", user_name="Pepe", message_id="m-2")))
+b.moderado("twitch", **b.parsear_borrado("@login=pepe;target-msg-id=m-2 :tmi.twitch.tv CLEARMSG #tucanal :x"))
+b.emitir(tipo="chat", plataforma="kick", usuario="Juan", texto="spam", mid="k-1", uid=5)
+b.moderado("kick", accion="borrar", mid="k-1")  # Kick no dice de quién era: se busca en el chat
+nuevos = [e for e in list(b.eventos["lista"])[antes:] if e["tipo"] == "moderado"]
+assert [(e["mid"], e["por"], e["usuario"]) for e in nuevos] == [("m-3", "Stream Kit", "Pepe"), ("m-2", "ModAna", "Pepe"), ("k-1", "", "Juan")], nuevos
+# lo automático del bot sale como "el bot"; si la plataforma no lo deja, no sale
+b.helix = lambda *a, **k: {}
+b.moderar("borrar", b.parsear(linea("compra seguidores")), {"tucanal": "2", "tubot": "1"})
+assert b.eventos["lista"][-1]["por"] == "el bot" and b.eventos["lista"][-1]["mid"] == "abc-123"
+b.vistas.clear()
+b.helix = falla(403)
+antes = len(b.eventos["lista"])
+b.moderar("banear", b.parsear(linea("compra seguidores")), {"tucanal": "2", "tubot": "1"})
+assert len(b.eventos["lista"]) == antes and not b.vistas, "lo que falló no sale ni queda anotado"
+b.helix = reales_ord[0]
+
+# Kick: borrados, bans y timeouts por Pusher. Kick esconde quién fue ("moderator", id 0), salvo su moderación automática
+kick_ev = lambda nombre, d: {"event": "App\Events\\" + nombre, "data": json.dumps(d)}
+ban = {"id": "x", "user": {"id": 1825719, "username": "Twisted187", "slug": "twisted187"}, "banned_by": {"id": 0, "username": "moderator", "slug": "moderator"},
+       "permanent": False, "duration": 2, "expires_at": "2026-11-22T03:49:50+00:00"}  # tal cual llegó de un canal real
+assert b.moderacion_kick(kick_ev("UserBannedEvent", ban)) == {"usuario": "Twisted187", "uid": 1825719, "accion": "timeout", "minutos": 2, "por": ""}
+permanente = b.moderacion_kick(kick_ev("UserBannedEvent", {**ban, "permanent": True, "banned_by": {"id": 9, "username": "ModKick"}}))
+assert (permanente["accion"], permanente["minutos"], permanente["por"]) == ("banear", None, "ModKick"), "si algún día Kick lo dice, sale"
+assert b.moderacion_kick(kick_ev("UserUnbannedEvent", {"user": {"id": 5, "username": "Juan"}, "unbanned_by": {"id": 0, "username": "moderator"}}))["accion"] == "desbanear"
+assert b.moderacion_kick(kick_ev("MessageDeletedEvent", {"id": "e", "message": {"id": "k-2"}, "aiModerated": False, "violatedRules": []})) == {"accion": "borrar", "mid": "k-2", "por": ""}
+assert b.moderacion_kick(kick_ev("MessageDeletedEvent", {"message": {"id": "k-3"}, "aiModerated": True}))["por"] == "la moderación automática de Kick"
+assert b.moderacion_kick(kick_ev("MessageDeletedEvent", {})) is None and b.moderacion_kick(kick_ev("StreamerIsLive", {"x": 1})) is None
+
+# EventSub con el permiso: se suscribe a los follows y a la moderación, y avisa quién borró
+llamadas.clear()
+borro = {"metadata": {"message_type": "notification"}, "payload": {"subscription": {"type": "channel.moderate"},
+                                                                     "event": mod("delete", user_id="8", user_name="Troll", message_id="m-9")}}
+llegado = cuadro({"metadata": {"message_type": "session_welcome"}, "payload": {"session": {"id": "ses", "keepalive_timeout_seconds": 10}}}) + cuadro(borro)
+b.alcances, b.helix, b.ws_conectar = (lambda: b.ALCANCES.split()), helix_falso, (lambda host, ruta: (SocketFalso(), llegado))
+b.follows.update(activo=True, estado="conectando")
+antes = len(b.eventos["lista"])
+try:
+    b.follows_sesion()
+    raise AssertionError("tenía que cortar")
+except ConnectionError:
+    pass
+assert [c[2]["type"] for c in llamadas if c[0] == "POST"] == ["channel.follow", "channel.moderate"] and b.moderacion["estado"] == "conectado"
+assert [(e["usuario"], e["por"]) for e in list(b.eventos["lista"])[antes:]] == [("Troll", "ModAna")]
+assert not b.moderacion["activo"], "con EventSub cortado, los borrados vuelven a salir por el chat"
+b.alcances, b.helix, b.ws_conectar = reales_tw
+b.follows["activo"] = False
 
 # quién mira: Twitch da la lista del chat; en las dos, quién escribió desde que arrancó el stream
 reales_q = b.helix, b.alcances

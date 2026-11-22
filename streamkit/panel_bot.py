@@ -146,7 +146,7 @@ def estado():
     bot, servicios = leer_json(ESTADO_BOT), leer_json(SERVICIOS)
     vivo = ahora - bot.get('actualizado', 0) < SIN_SENAL
     return {
-        'bot': {'vivo': vivo, 'twitch': bot.get('twitch', ''), 'kick': bot.get('kick', ''), 'follows': bot.get('follows', ''), 'aviso': ultimo_aviso(),
+        'bot': {'vivo': vivo, 'twitch': bot.get('twitch', ''), 'kick': bot.get('kick', ''), 'follows': bot.get('follows', ''), 'moderacion': bot.get('moderacion', ''), 'aviso': ultimo_aviso(),
                 'viewers': bot.get('viewers', {}) if vivo else {}, 'ids': bot.get('ids', {}),
                 **servicios.get('bot', {'reinicios': 0, 'ultimo_fallo': ''})},
         'delay': servicios.get('delay', {'reinicios': 0, 'ultimo_fallo': ''}),
