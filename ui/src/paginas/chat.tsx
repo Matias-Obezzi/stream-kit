@@ -342,7 +342,12 @@ export default function Pagina() {
       const nombre = NOMBRES[clave]
       return [
         <div key={clave} className="space-y-1">
-          <h2 className="text-sm font-semibold">{!p.error && p.usuarios ? `${nombre} · ${p.total} en el chat` : nombre}</h2>
+          <h2 className="text-sm font-semibold">{!p.error && p.usuarios ? `${nombre} · ${p.total} conectados al chat` : nombre}</h2>
+          {!p.error && p.usuarios && (
+            <p className="text-xs text-muted-foreground">
+              No son los espectadores: entran los bots y quien tiene el chat abierto sin mirar, y quien se va tarda unos minutos en salir.
+            </p>
+          )}
           <p className="[overflow-wrap:anywhere]">{p.error ? p.error : p.usuarios ? nombres(p.usuarios) : 'Kick no dice quién mira.'}</p>
           <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">Escribieron en este stream: {nombres(p.escribieron || [])}</p>
         </div>,
@@ -377,7 +382,7 @@ export default function Pagina() {
               size="sm"
               aria-expanded={quienesAbierto}
               aria-controls="quienes"
-              title="Espectadores ahora, se actualiza cada 30 segundos. Tocá para ver quiénes"
+              title="Espectadores según cada plataforma: la misma cifra que muestran en tu canal, que actualizan más o menos una vez por minuto. Tocá para ver quién está en el chat"
               onClick={() => {
                 const abrir = !quienesAbierto
                 setQuienesAbierto(abrir)
@@ -399,8 +404,10 @@ export default function Pagina() {
               En OBS: Ver → Paneles → Paneles de navegador personalizados, y agregá <code>http://127.0.0.1:8080/chat</code>. Queda como un panel más.
             </li>
             <li>
-              Tocá el contador de espectadores para ver quiénes están: en Twitch, los que están en el chat con su cuenta (los anónimos no salen). Kick
-              no lo dice; de las dos se ve quién escribió desde que arrancó el stream.
+              El contador es la cifra de espectadores que da cada plataforma: arranca en 0 y la actualizan más o menos una vez por minuto. Si la
+              conexión con una plataforma se corta y vuelve, esa plataforma puede contar de nuevo desde 0. Tocá el contador para ver quién está en el
+              chat de Twitch: son las cuentas conectadas al chat, con bots y gente que tiene el chat abierto sin mirar, así que pueden ser más que los
+              espectadores. Kick no lo dice; de las dos se ve quién escribió desde que arrancó el stream.
             </li>
             <li>La campanita suena con cada mensaje; abajo elegís cuándo sí y cuándo no.</li>
             <li>

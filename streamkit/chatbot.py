@@ -677,6 +677,26 @@ def contar_seguidores():
             pass
 
 
+fallos_viewers = {}  # respuestas vacías o fallidas seguidas, por plataforma
+
+
+def anotar_viewers(plataforma, d):
+    """d: la lista de la API (vacía sin stream) o None si la consulta falló.
+    Twitch a veces contesta vacío o falla una vuelta en pleno vivo: el número se mantiene hasta la segunda seguida."""
+    if d:
+        fallos_viewers[plataforma] = 0
+        viewers[plataforma] = d[0]["viewer_count"]
+        inicio[plataforma] = fecha(d[0].get("started_at"))
+        return
+    fallos_viewers[plataforma] = fallos_viewers.get(plataforma, 0) + 1
+    if fallos_viewers[plataforma] < 2 and viewers.get(plataforma) is not None:
+        return
+    if d is None:  # sin sesión todavía o sin internet: no se muestra
+        viewers.pop(plataforma, None)
+    else:
+        viewers[plataforma] = inicio[plataforma] = None
+
+
 def contar_viewers():
     vuelta = 0
     while True:
@@ -687,10 +707,9 @@ def contar_viewers():
                                         ("kick", lambda: kick_api("GET", f"livestreams?broadcaster_user_id={CONFIG['kick_broadcaster_id']}"))):
             try:
                 d = pedir_lista()["data"]
-                viewers[plataforma] = d[0]["viewer_count"] if d else None
-                inicio[plataforma] = fecha(d[0].get("started_at")) if d else None
-            except (OSError, KeyError, ValueError):  # sin sesión todavía o sin internet: no se muestra
-                viewers.pop(plataforma, None)
+            except (OSError, KeyError, ValueError):
+                d = None
+            anotar_viewers(plataforma, d)
         time.sleep(30)
 
 

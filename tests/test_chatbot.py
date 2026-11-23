@@ -436,4 +436,20 @@ b.helix, b.alcances = reales_q
 textos = [t["texto"] for t in b.CONFIG["timers"]] + [c["respuesta"] for c in b.CONFIG["comandos"].values()] + [ayuda]
 for t in textos:
     assert 0 < len(t) <= 500 and "\n" not in t and "¿" not in t and not t.endswith("."), t  # límite de Twitch y VOZ.md
+
+# los viewers aguantan una respuesta vacía
+b.viewers.clear(); b.fallos_viewers.clear()
+vivo = [{"viewer_count": 12, "started_at": "2026-11-23T20:00:00Z"}]
+b.anotar_viewers("twitch", vivo)
+assert b.viewers["twitch"] == 12
+b.anotar_viewers("twitch", [])  # Twitch contesta vacío una vez en pleno vivo: se mantiene
+assert b.viewers["twitch"] == 12
+b.anotar_viewers("twitch", None)  # y un fallo seguido: ya son dos, se esconde
+assert "twitch" not in b.viewers
+b.anotar_viewers("twitch", vivo)
+b.anotar_viewers("twitch", [])
+b.anotar_viewers("twitch", [])  # dos vacías seguidas: terminó el stream
+assert b.viewers["twitch"] is None
+b.anotar_viewers("kick", None)  # sin sesión desde el arranque: no sale
+assert "kick" not in b.viewers
 print("ok")
