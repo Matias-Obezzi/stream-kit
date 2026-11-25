@@ -12,6 +12,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarTrigger,
 } from '@/components/ui/sidebar'
 import { PAGINAS } from '@/rutas'
 import { Enlace, useRuta } from '@/lib/router'
@@ -61,43 +62,48 @@ function Version() {
   )
 }
 
+// el menú recuerda si quedó achicado: la cookie la escribe el propio Sidebar al tocar el botón
+const MENU = 'menu_abierto'
+const menuAbierto = !document.cookie.split('; ').includes(MENU + '=false')
+
 export function Marco({ children }: { children: React.ReactNode }) {
   const ruta = useRuta()
   return (
-    <SidebarProvider collapsible="none" breakpoint="md" width={208} keyboardShortcut={false} cookieName={false}>
+    <SidebarProvider collapsible="click" defaultOpen={menuAbierto} breakpoint="md" width={208} keyboardShortcut={false} cookieName={MENU}>
       <div className="flex min-h-svh">
-      <Sidebar label="Páginas" className="max-md:hidden">
-        <SidebarHeader>
-          <Enlace href="/" className="px-2 py-1 text-base font-semibold">
-            Stream Kit
-          </Enlace>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarMenu>
-            {visibles.map((p) => (
-              <SidebarMenuItem key={p.ruta}>
-                <SidebarLink asChild active={p.ruta === ruta} icon={<p.icono aria-hidden />}>
-                  <Enlace href={p.ruta} aria-current={p.ruta === ruta ? 'page' : undefined}>
-                    {p.nombre}
-                  </Enlace>
-                </SidebarLink>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarContent>
-        <SidebarFooter>
-          <Version />
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset className="min-w-0">
-        <div
-          role="status"
-          className="sticky top-0 z-(--z-sticky,40) flex h-10 items-center gap-2 overflow-x-auto border-b bg-background/95 px-3 backdrop-blur [scrollbar-width:none]"
-        >
-          <BarraEstado />
-        </div>
-        <div className="mx-auto w-full max-w-6xl p-3 pb-20 sm:p-4 sm:pb-20 md:p-6 md:pb-8">{children}</div>
-      </SidebarInset>
+        <Sidebar label="Páginas" className="max-md:hidden">
+          <SidebarHeader className="justify-between">
+            <Enlace href="/" className="truncate px-2 py-1 text-base font-semibold group-data-[state=collapsed]/sidebar:hidden">
+              Stream Kit
+            </Enlace>
+            <SidebarTrigger title="Achicar o agrandar el menú" />
+          </SidebarHeader>
+          <SidebarContent>
+            <SidebarMenu>
+              {visibles.map((p) => (
+                <SidebarMenuItem key={p.ruta}>
+                  <SidebarLink asChild active={p.ruta === ruta} icon={<p.icono aria-hidden />}>
+                    <Enlace href={p.ruta} aria-current={p.ruta === ruta ? 'page' : undefined}>
+                      {p.nombre}
+                    </Enlace>
+                  </SidebarLink>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarContent>
+          <SidebarFooter className="group-data-[state=collapsed]/sidebar:hidden">
+            <Version />
+          </SidebarFooter>
+        </Sidebar>
+        <SidebarInset className="min-w-0">
+          <div
+            role="status"
+            className="sticky top-0 z-(--z-sticky,40) flex h-10 items-center gap-2 overflow-x-auto border-b bg-background/95 px-3 backdrop-blur [scrollbar-width:none]"
+          >
+            <BarraEstado />
+          </div>
+          <div className="mx-auto w-full max-w-6xl p-3 pb-20 sm:p-4 sm:pb-20 md:p-6 md:pb-8">{children}</div>
+        </SidebarInset>
       </div>
       <MenuAbajo ruta={ruta} />
     </SidebarProvider>
