@@ -126,13 +126,14 @@ except AttributeError:  # el _start de mentira no arma la cola
     pass
 assert arranques == [2] and not nuevo.antes
 
-# plataforma principal: si se atrasa, las demás bajan de a 30 % hasta el piso; si anda bien 3 min, suben de a 25 %
+# plataforma principal: si se atrasa, las demás bajan al piso de un salto; si anda bien 3 min, vuelven de un salto
+# (cada cambio reconecta: de a poco eran cortes cada 3 min). Si con ellas en el piso sigue mal, vuelven y no se insiste.
 from types import SimpleNamespace as NS
 pb, llamadas = delay.Bridge({'delay_seconds': 1}, 'ffmpeg', []), []
 pb.cfg.update(principal='p', piso=2500, destinations=[{'id': 'p', 'name': 'Twitch'}, {'id': 'k', 'name': 'Kick'},
-                                                      {'id': 'y', 'name': 'YouTube', 'bitrate': 3000}])
+                                                      {'id': 'y', 'name': 'YouTube', 'bitrate': 2000}])
 pb.sync_outputs = lambda: llamadas.append(dict(pb.ajuste))
-p, k, y = (NS(running=lambda: True, bitrate=kb, pendiente=0, descartes=0) for kb in (0, 0, 3000))
+p, k, y = (NS(running=lambda: True, bitrate=kb, pendiente=0, descartes=0) for kb in (0, 0, 2000))
 pb.outputs, pb.entrada_kbps = {'p': p, 'k': k, 'y': y}, 6000
 for t in range(10):
     pb.priorizar(100 + t)
@@ -140,25 +141,34 @@ assert not llamadas  # anda bien y no hay nada bajado: no se toca
 p.pendiente = 3 * 6000 * 125  # 3 s atrasada
 for t in range(3):
     pb.priorizar(200 + t)
-assert llamadas == [{'k': 4000, 'y': 2500}], llamadas  # YouTube: 2100 sería menos que el piso
-k.bitrate, y.bitrate = 4000, 2500
-for t in range(3, 30):
-    pb.priorizar(200 + t)
-assert llamadas[-1] == {'k': 2750, 'y': 2500} and len(llamadas) == 2, llamadas  # 20 s entre cambios
-k.bitrate, p.pendiente = 2750, 0
+assert llamadas == [{'k': 2500}], llamadas  # YouTube ya está debajo del piso: no se toca
+k.bitrate, p.pendiente = 2500, 0
 pb.priorizar(300)
 pb.priorizar(400)
-assert len(llamadas) == 2  # todavía no pasaron 3 min bien
+assert len(llamadas) == 1  # todavía no pasaron 3 min bien
 pb.priorizar(481)
-assert llamadas[-1] == {'k': 3250}, llamadas  # YouTube vuelve a sus 3000
-k.bitrate, p.descartes = 3250, 1  # saltó enseguida después de subir: se baja y la próxima subida espera el doble
+assert llamadas[-1] == {} and len(llamadas) == 2, llamadas  # de un salto a lo configurado
+k.bitrate, p.descartes = 0, 1  # saltó enseguida después de subir: se baja y la próxima subida espera el doble
 pb.priorizar(490)
-pb.priorizar(505)
+pb.priorizar(505)  # 20 s entre cambios
 assert llamadas[-1] == {'k': 2500} and pb.espera == 360, (llamadas, pb.espera)
+k.bitrate = 2500
+for t in range(506, 600):  # sigue saltando con Kick en el piso: no es la subida
+    p.descartes += 1
+    pb.priorizar(t)
+assert llamadas[-1] == {} and len(llamadas) == 4 and pb.sin_ayuda, llamadas
+k.bitrate = 0
+for t in range(600, 700):
+    p.descartes += 1
+    pb.priorizar(t)
+assert len(llamadas) == 4  # no insiste mientras la principal siga mal
+for t in range(700, 1100):
+    pb.priorizar(t)
+assert not pb.sin_ayuda and len(llamadas) == 4  # se arregló sola: la próxima vez se prueba bajar de nuevo
 p.running = lambda: False
 k.running = y.running = lambda: False
-pb.priorizar(600)
-assert llamadas[-1] == {} and pb.espera == 180  # terminó el stream: la próxima arranca con lo configurado
+pb.priorizar(1200)
+assert pb.espera == 180  # terminó el stream: la próxima arranca con lo configurado
 
 # red lenta: la cola crece, a los 3000 se tira lo atrasado y se cuenta el salto
 o = delay.Output('ffmpeg', 'rtmps://kick/app/secreta')

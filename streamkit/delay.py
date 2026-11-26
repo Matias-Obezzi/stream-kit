@@ -468,6 +468,7 @@ class Bridge:
         self.sync_lock = threading.Lock()  # lo llaman el panel y priorizar: dos a la vez armarían dos ffmpeg con la misma clave
         # plataforma principal: kbps que priorizar les bajó a las demás (id -> kbps) y su estado
         self.ajuste, self.mal, self.bien_desde, self.cambio, self.subida, self.espera = {}, 0, 0.0, -1e9, -1e9, ESPERA_SUBIR
+        self.bajada, self.sin_ayuda = -1e9, False
         self.descartes_principal, self.salto_en = 0, -1e9
         self.sync_outputs()
         # para el panel
@@ -502,17 +503,20 @@ class Bridge:
             self.outputs = outs  # se reemplaza entero: el hilo que envía itera sobre una copia
 
     def priorizar(self, ahora=None):
-        """Plataforma principal: si se atrasa o salta, les baja el bitrate a las demás (hasta el piso); si anda bien un rato,
-        se lo vuelve a subir de a poco. Cada cambio reconecta a esa plataforma (unos segundos), por eso va despacio."""
+        """Plataforma principal: si se atrasa o salta, las demás bajan al piso; si anda bien un rato, vuelven a lo suyo.
+        Cada cambio reconecta a esa plataforma (unos segundos de corte), por eso va de un solo salto y no de a poco.
+        Si con las demás en el piso la principal sigue mal, el problema es su conexión: las demás vuelven y no se insiste."""
         ahora = time.monotonic() if ahora is None else ahora
         pid = self.cfg.get('principal') or ''
         p = self.outputs.get(pid)
         otras = {i: o for i, o in self.outputs.items() if i != pid and o.running()}
         if not p or not p.running() or not otras:
             self.mal, self.bien_desde = 0, 0.0
-            if self.ajuste and not any(o.running() for o in self.outputs.values()):  # terminó el stream: vuelve lo configurado
-                self.ajuste, self.espera = {}, ESPERA_SUBIR
-                self.sync_outputs()
+            if not any(o.running() for o in self.outputs.values()):  # terminó el stream: vuelve lo configurado
+                self.espera, self.sin_ayuda = ESPERA_SUBIR, False
+                if self.ajuste:
+                    self.ajuste = {}
+                    self.sync_outputs()
             return
         salto = p.descartes > self.descartes_principal
         self.descartes_principal = p.descartes
@@ -523,32 +527,33 @@ class Bridge:
         self.bien_desde = (self.bien_desde or ahora) if atraso < 0.5 and not salto else 0.0
         piso = int(self.cfg.get('piso') or PISO)
         config = {d['id']: d.get('bitrate', 0) or self.entrada_kbps for d in self.cfg.get('destinations', [])}
-        if (self.mal >= 3 or ahora - self.salto_en < 30) and ahora - self.cambio > 20:
+        nombres = {d['id']: d['name'] for d in self.cfg.get('destinations', [])}
+        if (self.mal >= 3 or ahora - self.salto_en < 30) and ahora - self.cambio > 20 and not self.sin_ayuda:
             cambios = {}
             for i, o in otras.items():
-                actual = o.bitrate or self.entrada_kbps
-                nuevo = max(min(piso, config.get(i, actual)), int(actual * 0.7) // 250 * 250)
-                if nuevo < actual:
+                nuevo = min(piso, config.get(i, o.bitrate or self.entrada_kbps))
+                if nuevo < (o.bitrate or self.entrada_kbps):
                     cambios[i] = nuevo
             self.cambio, self.mal, self.salto_en = ahora, 0, -1e9  # aunque ya estén en el piso: no reintentar cada segundo
             if cambios:
                 if ahora - self.subida < 120:  # subirlo la hizo andar mal: la próxima subida espera el doble
                     self.espera = min(1800, self.espera * 2)
                 self.ajuste.update(cambios)
-                nombres = {d['id']: d['name'] for d in self.cfg.get('destinations', [])}
+                self.bajada = ahora
                 print('La principal se atrasa: ' + ', '.join(f'{nombres.get(i, i)} a {k} kbps' for i, k in cambios.items()), flush=True)
                 self.sync_outputs()
-        elif self.ajuste and self.bien_desde and ahora - self.bien_desde > self.espera and ahora - self.cambio > self.espera:
-            for i, k in list(self.ajuste.items()):
-                techo = config.get(i, 0)
-                nuevo = int(k * 1.25) // 250 * 250
-                if not techo or nuevo >= techo:
-                    del self.ajuste[i]  # vuelve a lo configurado
-                else:
-                    self.ajuste[i] = nuevo
-            self.cambio = self.subida = ahora
-            print('La principal anda bien: se les sube el bitrate a las demás.', flush=True)
-            self.sync_outputs()
+            elif self.ajuste and ahora - self.bajada > 60:
+                self.ajuste, self.sin_ayuda = {}, True
+                print(f'Con las demás en el piso, {nombres.get(pid, pid)} sigue mal: el problema es su conexión, no la subida. '
+                      'Las demás vuelven a su bitrate.', flush=True)
+                self.sync_outputs()
+        elif self.bien_desde and ahora - self.bien_desde > self.espera and ahora - self.cambio > self.espera:
+            self.sin_ayuda = False  # la principal se arregló: si vuelve a fallar, se prueba bajar de nuevo
+            if self.ajuste:
+                self.ajuste = {}
+                self.cambio = self.subida = ahora
+                print('La principal anda bien: las demás vuelven a su bitrate.', flush=True)
+                self.sync_outputs()
 
     def medir(self, cada=1.0, tcp=tcp_segmentos):
         """Cada segundo: kbps de entrada y de cada salida, y la pérdida de la red (promedio de los últimos 10 s)."""
@@ -1134,7 +1139,7 @@ def api(bridge, cfg_path, clave, salir):
                 if not 500 <= piso <= 20000:
                     return self.error('El piso tiene que estar entre 500 y 20000 kbps.')
                 if pid != (bridge.cfg.get('principal') or ''):
-                    bridge.ajuste = {}  # otra principal: las demás vuelven a lo suyo y se empieza de cero
+                    bridge.ajuste, bridge.sin_ayuda = {}, False  # otra principal: las demás vuelven a lo suyo y se empieza de cero
                 bridge.cfg['principal'], bridge.cfg['piso'] = pid, piso
             else:
                 d = next((d for d in dests if d['id'] == s.get('id')), None)

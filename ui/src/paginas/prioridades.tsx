@@ -74,8 +74,8 @@ function Bitrate({ d, refrescar }: { d: Destino; refrescar: () => void }) {
   )
 }
 
-// una plataforma principal: si se atrasa, la app les baja el bitrate a las demás (nunca menos que el piso) y se lo
-// devuelve de a poco cuando la principal anda bien
+// una plataforma principal: si se atrasa, la app les baja el bitrate a las demás hasta el piso y se lo
+// devuelve cuando la principal anda bien
 function Prioridad({ s, refrescar }: { s: Estado; refrescar: () => void }) {
   const actual = s.prioridad ?? { principal: '', piso: 2500 }
   const [piso, setPiso] = React.useState<number | null>(actual.piso)
@@ -134,7 +134,7 @@ function Prioridad({ s, refrescar }: { s: Estado; refrescar: () => void }) {
       <p className="text-xs text-muted-foreground">
         {sinPrincipal
           ? 'Elegí una y la app la cuida: si se atrasa, les baja el bitrate a las demás.'
-          : 'Si la principal se atrasa, las demás bajan de a 30 % hasta el piso; cuando anda bien 3 minutos, suben de a poco. Cada cambio reconecta a esa plataforma unos segundos.'}
+          : 'Si la principal se atrasa, las demás bajan al piso; cuando anda bien 3 minutos, vuelven a lo suyo. Cada cambio corta a esa plataforma unos segundos, por eso va de un salto. Si bajarlas no ayuda, vuelven y no se insiste.'}
       </p>
     </div>
   )

@@ -579,9 +579,10 @@ const AYUDA: Record<string, React.ReactNode> = {
           procesador si no hay) y las demás siguen con lo que manda OBS. Cambiarlo en vivo reconecta a esa plataforma unos segundos.
         </li>
         <li>
-          <b>Plataforma principal</b>: la que tiene que andar siempre bien. Si se atrasa o salta, las demás bajan de a 30 % hasta el <b>piso</b>;
-          cuando la principal anda bien 3 minutos, suben de a poco. Si subir la hizo andar mal, la próxima vez espera el doble. Al terminar el stream
-          todas vuelven a lo que tienen configurado.
+          <b>Plataforma principal</b>: la que tiene que andar siempre bien. Si se atrasa o salta, las demás bajan al <b>piso</b> de un salto; cuando
+          la principal anda bien 3 minutos, vuelven a lo suyo, también de un salto: cada cambio corta a esa plataforma unos segundos. Si subir la hizo
+          andar mal, la próxima vez espera el doble. Si con las demás en el piso la principal sigue mal, el problema es su conexión: las demás vuelven
+          a lo suyo y no se insiste hasta que la principal se arregle. Al terminar el stream todas vuelven a lo configurado.
         </li>
         <li>
           <b>Prueba de subida</b>: sin stream, mide cuánto pasa por una conexión hasta Twitch y te dice qué bitrate usar en OBS.
