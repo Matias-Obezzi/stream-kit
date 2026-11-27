@@ -20,6 +20,7 @@ from urllib.parse import unquote
 import canal
 import cuentas
 import deck
+import escenas
 import mcp
 import metricas
 import obs
@@ -229,6 +230,8 @@ def panel():
                 return self.reply(200, json.dumps(canal.leer()).encode())
             if path == '/api/canal/presets':
                 return self.reply(200, json.dumps(canal.presets()).encode())
+            if path == '/api/canal/escenas':
+                return self.reply(200, json.dumps(escenas.leer()).encode())
             if path == '/api/canal/buscar':
                 return self.reply(200, json.dumps(canal.buscar(unquote(query[2:]) if query.startswith('q=') else '')).encode())
             if path == '/api/eventos':
@@ -335,6 +338,12 @@ def panel():
                     return self.reply(200, json.dumps(canal.guardar(s)).encode())
                 except ValueError as e:
                     return self.error(str(e))
+            if path == '/api/canal/escenas/guardar':
+                try:
+                    escenas.guardar_reglas(s.get('reglas'))
+                    return self.reply(200, json.dumps(escenas.leer()).encode())
+                except (OSError, ValueError) as e:
+                    return self.error(str(e))
             if path in ('/api/canal/presets/guardar', '/api/canal/presets/borrar'):
                 try:
                     if path.endswith('borrar'):
@@ -412,6 +421,7 @@ def panel():
     if '--abrir' in sys.argv and cfg.get('open_panel', True):  # solo la primera vez: no al reiniciarla en pleno stream
         threading.Timer(1, webbrowser.open, (f'http://127.0.0.1:{port}',)).start()
     print(f'Web en http://127.0.0.1:{port}', flush=True)
+    escenas.arrancar()  # título y categoría según la escena de OBS
     servidor.serve_forever()
 
 

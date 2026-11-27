@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { get, post } from '@/lib/api'
+import { get, post, usePoll } from '@/lib/api'
 import { Enlace } from '@/lib/router'
 import { cn } from '@/lib/utils'
 
@@ -38,6 +38,107 @@ interface Preset {
   categorias: Partial<Record<P, Cat>>
 }
 type Busqueda = Record<P, Cat[]> & { error_twitch?: string; error_kick?: string }
+interface Escenas {
+  estado: 'conectando' | 'conectado' | 'desconectado' | 'apagado' | 'clave' | 'sin obs'
+  escena: string
+  escenas: string[]
+  en_vivo: boolean
+  reglas: Record<string, string>
+  ultimo: { escena: string; preset: string; resultado: Partial<Record<P, { ok: boolean; error?: string }>> & { error?: string } } | null
+}
+
+const ESTADO_OBS: Record<Escenas['estado'], string> = {
+  conectando: 'Buscando OBS…',
+  desconectado: 'Esperando a OBS: abrilo y se conecta solo.',
+  'sin obs': 'No encontré OBS en esta PC.',
+  apagado: 'El servidor WebSocket de OBS está apagado: prendelo en OBS → Herramientas → Ajustes del servidor WebSocket.',
+  clave: 'OBS no aceptó la contraseña del WebSocket: en OBS → Herramientas → Ajustes del servidor WebSocket, tocá Aplicar y probá de nuevo.',
+  conectado: '',
+}
+
+// cada escena de OBS con su preset: mientras transmitís, al quedarte 5 s en una escena se pone su preset
+function SegunEscena({ presets }: { presets: Preset[] }) {
+  const { datos, refrescar } = usePoll<Escenas>('/api/canal/escenas', 5000)
+  const [error, setError] = React.useState('')
+  if (!datos) return <p className="text-sm text-muted-foreground">Buscando OBS…</p>
+
+  async function elegir(escena: string, preset: string) {
+    setError('')
+    try {
+      await post('/api/canal/escenas/guardar', { reglas: { ...datos!.reglas, [escena]: preset } })
+      refrescar()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const u = datos.ultimo
+  const fallas = u
+    ? [u.resultado.error, ...PL.map((p) => u.resultado[p] && !u.resultado[p]!.ok && `${NOMBRES[p]}: ${u.resultado[p]!.error}`)].filter(Boolean)
+    : []
+  return (
+    <div className="grid gap-3">
+      <ul className="space-y-2">
+        <Linea tono={datos.estado === 'conectado' ? 'on' : datos.estado === 'desconectado' || datos.estado === 'conectando' ? 'medio' : 'err'}>
+          {datos.estado === 'conectado'
+            ? datos.en_vivo
+              ? 'Conectado a OBS, en vivo: al quedarte 5 segundos en una escena se pone su preset.'
+              : 'Conectado a OBS. Se aplica solo mientras transmitís.'
+            : ESTADO_OBS[datos.estado]}
+        </Linea>
+        {u && (
+          <Linea tono={fallas.length ? 'err' : 'on'}>
+            {`Último: «${u.escena}» puso «${u.preset}»` + (fallas.length ? ` · ${fallas.join(' · ')}` : '')}
+          </Linea>
+        )}
+      </ul>
+      {datos.escenas.length > 0 &&
+        (presets.length ? (
+          <>
+            <ul className="grid gap-3">
+              {presets.map((p) => (
+                <li key={p.nombre} className="grid gap-1.5">
+                  <p className="text-sm font-medium">{p.nombre}</p>
+                  <div role="group" aria-label={`Escenas de OBS con el preset ${p.nombre}`} className="flex flex-wrap gap-1.5">
+                    {datos.escenas.map((e) => {
+                      const puesta = datos.reglas[e] === p.nombre
+                      return (
+                        <Button
+                          key={e}
+                          size="sm"
+                          variant={puesta ? 'default' : 'outline'}
+                          aria-pressed={puesta}
+                          title={
+                            puesta
+                              ? `Sacarle este preset a ${e}`
+                              : `Poner este preset en ${e}` + (datos.reglas[e] ? ` (ahora tiene ${datos.reglas[e]})` : '')
+                          }
+                          className={cn('h-7 max-w-full px-2 text-xs', e === datos.escena && 'ring-1 ring-primary')}
+                          onClick={() => elegir(e, puesta ? '' : p.nombre)}
+                        >
+                          <span className="truncate">{e}</span>
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+              {(() => {
+                const libres = datos.escenas.filter((e) => !presets.some((p) => p.nombre === datos.reglas[e]))
+                return libres.length ? `Sin preset, no cambian nada: ${libres.join(', ')}.` : 'Todas las escenas tienen preset.'
+              })()}{' '}
+              Cada escena va con un preset: si la marcás en otro, pasa a ese. La que tiene el borde es la de ahora.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">Guardá algún preset arriba y después marcá en qué escenas va.</p>
+        ))}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  )
+}
 
 const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 
@@ -80,7 +181,11 @@ export default function Pagina() {
   const mensaje = (texto: string, error = false) => setMsg({ texto, error })
   const conectada = (p: P) => !!actual?.[p] && !actual[p].error
   const elegidas = PL.filter((p) => marcadas[p] && conectada(p))
-  const listaEtiquetas = () => etiquetas.split(',').map((e) => e.trim()).filter(Boolean)
+  const listaEtiquetas = () =>
+    etiquetas
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean)
   const catId = (p: P) => (cats[p] === DEJAR ? '' : cats[p])
 
   function opciones(p: P, lista: Cat[], elegida: string | number) {
@@ -131,10 +236,7 @@ export default function Pagina() {
       opciones(p, lista, igual ? igual.id : '')
     }
     const errores = [r.error_twitch, r.error_kick].filter(Boolean)
-    mensaje(
-      errores.length ? errores.join(' · ') : r.twitch.length || r.kick.length ? '' : 'No encontré nada con ese nombre.',
-      errores.length > 0,
-    )
+    mensaje(errores.length ? errores.join(' · ') : r.twitch.length || r.kick.length ? '' : 'No encontré nada con ese nombre.', errores.length > 0)
   }
 
   async function cambiar() {
@@ -235,6 +337,12 @@ export default function Pagina() {
             <li>
               Si repetís el mismo título y la misma categoría, guardalos como <b>preset</b>: con un toque se cargan en el formulario.
             </li>
+            <li>
+              En <b>Según la escena de OBS</b>, marcá en qué escenas va cada preset: uno puede ir en varias, y las que no marques (pausa, final) no
+              cambian nada. Mientras transmitís, al pasar a esa escena y quedarte 5 segundos, se pone su preset en Twitch y Kick solo. Pasar de largo
+              por una escena no cambia nada, y una escena sin preset deja lo que estaba. Usa el servidor WebSocket de OBS, que viene prendido: la
+              contraseña la lee de OBS.
+            </li>
           </ol>
         }
       />
@@ -285,10 +393,14 @@ export default function Pagina() {
               </ul>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Todavía no hay. Armá el título y la categoría abajo y guardalos con un nombre, por ejemplo «Ranked» o «Torneo»: después los
-                cargás con un toque.
+                Todavía no hay. Armá el título y la categoría abajo y guardalos con un nombre, por ejemplo «Ranked» o «Torneo»: después los cargás con
+                un toque.
               </p>
             )}
+          </Seccion>
+
+          <Seccion titulo="Según la escena de OBS">
+            <SegunEscena presets={presets} />
           </Seccion>
         </div>
 
@@ -346,8 +458,7 @@ export default function Pagina() {
               ))}
             </div>
             <p className="-mt-2 text-sm text-muted-foreground">
-              Cada plataforma tiene su propia lista de categorías: al buscar, se elige sola la que coincide con el nombre. Revisá que sean
-              la misma.
+              Cada plataforma tiene su propia lista de categorías: al buscar, se elige sola la que coincide con el nombre. Revisá que sean la misma.
             </p>
 
             <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
@@ -412,11 +523,7 @@ export default function Pagina() {
                 {msg.texto}
               </p>
               <Button disabled={!elegidas.length || cambiando} onClick={cambiar}>
-                {elegidas.length === 2
-                  ? 'Cambiar en las dos'
-                  : elegidas.length
-                    ? 'Cambiar en ' + NOMBRES[elegidas[0]]
-                    : 'Elegí una plataforma'}
+                {elegidas.length === 2 ? 'Cambiar en las dos' : elegidas.length ? 'Cambiar en ' + NOMBRES[elegidas[0]] : 'Elegí una plataforma'}
               </Button>
             </div>
           </div>

@@ -7,6 +7,7 @@ import base64, collections, datetime, json, logging, logging.handlers, os, re, s
 
 from cuentas import ALCANCES  # los permisos que pide el login de /config
 import rutas
+from ws import ws_codificar, ws_cuadro  # noqa: F401 (las pruebas las usan desde acá)
 from rutas import BOT as AQUI, PUERTO_BOT, config as ruta_config
 
 CONFIG = json.load(open(ruta_config(os.path.join("bot", "config.json")), encoding="utf-8"))
@@ -480,27 +481,6 @@ def kick_banear(m):
     except OSError as e:
         soltar()
         log.error("no pude banear a %s en Kick: %s", m["usuario"], e)
-
-
-def ws_codificar(datos, op=1):
-    mascara, n = os.urandom(4), len(datos)
-    largo = bytes([0x80 | n]) if n < 126 else bytes([0xFE]) + n.to_bytes(2, "big")
-    return bytes([0x80 | op]) + largo + mascara + bytes(b ^ mascara[i % 4] for i, b in enumerate(datos))
-
-
-def ws_cuadro(buf):
-    """Saca un cuadro del websocket: (tipo, datos, resto), o None si falta que llegue más."""
-    if len(buf) < 2:
-        return None
-    largo, pos = buf[1] & 0x7F, 2
-    if largo >= 126:
-        pos = 4 if largo == 126 else 10
-        if len(buf) < pos:
-            return None
-        largo = int.from_bytes(buf[2:pos], "big")
-    if len(buf) < pos + largo:
-        return None
-    return buf[0] & 0x0F, buf[pos:pos + largo], buf[pos + largo:]
 
 
 def parsear_kick(evento):

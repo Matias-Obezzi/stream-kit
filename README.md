@@ -15,6 +15,8 @@ Herramientas para streamear en **Twitch y Kick** desde Windows, todo en tu PC, s
   textos, título del stream, espectadores, metas, último seguidor, cuenta regresiva y lluvia de emojis), y la sumás a
   OBS con un solo link.
 - **Título, categoría y etiquetas** cambiados de una vez en Twitch y Kick, con presets para cargarlos con un toque.
+  Cada escena de OBS puede tener su preset: mientras transmitís, al pasar a esa escena y quedarte 5 segundos, se pone
+  solo (usa el servidor WebSocket de OBS y lee la contraseña de OBS).
 - **Consumo**: cuánta CPU, memoria y red usa cada parte (el delay, el bot, cada envío a una plataforma).
 - **Se configura solo**: un botón deja OBS listo, otros suman el panel y el chat adentro de OBS, y otro instala la tecla
   de delay en Stream Deck o StreamDock.
@@ -200,7 +202,7 @@ Para cambiar el panel con recarga al instante: una copia de prueba con `panel_po
 | Carpeta | Qué tiene |
 | --- | --- |
 | `app.py` | Lo que arranca todo: el guardián, el núcleo, la web o el bot según la opción |
-| `streamkit/` | El código: `delay.py` (el núcleo: OBS, delay y plataformas), `panel.py` (la web), `chatbot.py` (el bot), `guardian.py`, `versiones.py` (actualizar), `cuentas.py` (claves y logins), `canal.py` (título), `pantallas.py`, `mcp.py`, `obs.py`, `deck.py`, `metricas.py` |
+| `streamkit/` | El código: `delay.py` (el núcleo: OBS, delay y plataformas), `panel.py` (la web), `chatbot.py` (el bot), `guardian.py`, `versiones.py` (actualizar), `cuentas.py` (claves y logins), `canal.py` (título), `escenas.py` (título según la escena de OBS), `ws.py` (websocket), `pantallas.py`, `mcp.py`, `obs.py`, `deck.py`, `metricas.py` |
 | `ui/` | El panel (React + uiness): una página por pantalla en `ui/src/paginas`. `npm run build` lo deja en `web/app` |
 | `web/` | Lo que usa OBS como fuente de navegador (`pantalla.html`, `piezas.js`) y los scripts compartidos |
 | `recursos/` | Íconos, el botón de Stream Deck y StreamDock, y las configs de ejemplo |
