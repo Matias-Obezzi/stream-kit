@@ -40,7 +40,8 @@ Si la subida no da para todas al mismo bitrate:
   kbps si no elegís otro); cuando la principal anda bien 3 minutos, vuelven a su bitrate, también de un salto: cada
   cambio reconecta a esa plataforma unos segundos. Si subir la hizo andar mal, la próxima vez espera el doble. Si con las
   demás en el piso la principal sigue mal, el problema es su conexión: las demás vuelven y no se insiste hasta que se
-  arregle. Al terminar el stream todas vuelven a lo configurado.
+  arregle. Salvo que otra también se atrase: eso es la subida, que no da para todas, y las demás quedan en el piso. Al
+  terminar el stream todas vuelven a lo configurado.
 - **Consumo** guarda la red de los últimos 30 minutos con stream: bitrate de OBS y de cada plataforma, atraso,
   pérdida de paquetes y cada salto, para ver cuándo empezó un problema.
 

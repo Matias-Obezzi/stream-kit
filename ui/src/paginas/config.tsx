@@ -582,7 +582,8 @@ const AYUDA: Record<string, React.ReactNode> = {
           <b>Plataforma principal</b>: la que tiene que andar siempre bien. Si se atrasa o salta, las demás bajan al <b>piso</b> de un salto; cuando
           la principal anda bien 3 minutos, vuelven a lo suyo, también de un salto: cada cambio corta a esa plataforma unos segundos. Si subir la hizo
           andar mal, la próxima vez espera el doble. Si con las demás en el piso la principal sigue mal, el problema es su conexión: las demás vuelven
-          a lo suyo y no se insiste hasta que la principal se arregle. Al terminar el stream todas vuelven a lo configurado.
+          a lo suyo y no se insiste hasta que la principal se arregle; salvo que otra también se atrase: eso es la subida, que no da para todas, y las
+          demás quedan en el piso. Al terminar el stream todas vuelven a lo configurado.
         </li>
         <li>
           <b>Prueba de subida</b>: sin stream, mide cuánto pasa por una conexión hasta Twitch y te dice qué bitrate usar en OBS.

@@ -165,9 +165,18 @@ assert len(llamadas) == 4  # no insiste mientras la principal siga mal
 for t in range(700, 1100):
     pb.priorizar(t)
 assert not pb.sin_ayuda and len(llamadas) == 4  # se arregló sola: la próxima vez se prueba bajar de nuevo
+for t in range(1100, 1500):  # vuelve a fallar; con Kick de vuelta, Kick también salta: es la subida, no Twitch
+    p.descartes += 1
+    k.descartes += t == 1200
+    pb.priorizar(t)
+    k.bitrate = llamadas[-1].get('k', 0)
+assert llamadas[4:] == [{'k': 2500}, {}, {'k': 2500}] and pb.llena, llamadas  # vuelve al piso y no se rinde
+for t in range(1500, 1900):
+    pb.priorizar(t)
+assert llamadas[-1] == {} and not pb.llena  # la principal se arregló: las demás vuelven
 p.running = lambda: False
 k.running = y.running = lambda: False
-pb.priorizar(1200)
+pb.priorizar(2000)
 assert pb.espera == 180  # terminó el stream: la próxima arranca con lo configurado
 
 # red lenta: la cola crece, a los 3000 se tira lo atrasado y se cuenta el salto

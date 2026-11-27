@@ -134,7 +134,7 @@ function Prioridad({ s, refrescar }: { s: Estado; refrescar: () => void }) {
       <p className="text-xs text-muted-foreground">
         {sinPrincipal
           ? 'Elegí una y la app la cuida: si se atrasa, les baja el bitrate a las demás.'
-          : 'Si la principal se atrasa, las demás bajan al piso; cuando anda bien 3 minutos, vuelven a lo suyo. Cada cambio corta a esa plataforma unos segundos, por eso va de un salto. Si bajarlas no ayuda, vuelven y no se insiste.'}
+          : 'Si la principal se atrasa, las demás bajan al piso; cuando anda bien 3 minutos, vuelven a lo suyo. Cada cambio corta a esa plataforma unos segundos, por eso va de un salto. Si bajarlas no ayuda, vuelven y no se insiste, salvo que otra también se atrase: ahí es la subida y quedan en el piso.'}
       </p>
     </div>
   )
